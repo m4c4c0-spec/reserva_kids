@@ -1,0 +1,22 @@
+# Java / Maven
+backend/target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Entorno (secretos reales NUNCA al repo — RNF-02b)
+.env
+*.env.local
+
+# IDE / SO
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Herramientas de IA (artefactos locales)
+.aider*

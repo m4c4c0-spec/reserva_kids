@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-reservakids}
+      POSTGRES_USER: ${POSTGRES_USER:-reservakids_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir en .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reservakids_app} -d ${POSTGRES_DB:-reservakids}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-reservakids}
+      DB_USER: ${POSTGRES_USER:-reservakids_app}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?definir en .env}
+      JWT_SECRET: ${JWT_SECRET:?definir en .env}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Santiago}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@reservakids.cl}
+      RESERVA_EXPIRACION_HORAS: ${RESERVA_EXPIRACION_HORAS:-48}
+      COTIZACION_EXPIRACION_DIAS: ${COTIZACION_EXPIRACION_DIAS:-14}
+      RETENCION_CLIENTE_MESES: ${RETENCION_CLIENTE_MESES:-24}
+      TENANT_PURGA_DIAS: ${TENANT_PURGA_DIAS:-90}
+    ports:
+      - "8080:8080"
+    # Falla #8 (revisión 2 años): sin esto, una JVM muerta seguía "running" para Docker
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  pgdata:

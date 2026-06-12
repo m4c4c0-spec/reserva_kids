@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: reservakids-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/reservakids}
+    username: ${DB_USER:reservakids_app}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate   # el esquema lo gobierna Flyway, nunca Hibernate
+    open-in-view: false
+  flyway:
+    enabled: true
+  # RF-08: email transaccional — si MAIL_HOST está vacío, el adaptador degrada a log (MVP)
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
+server:
+  port: 8080
+  error:
+    include-stacktrace: never
+
+# Falla #8 (2 años): solo /actuator/health, sin detalles (es público para el healthcheck)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:}
+    issuer: reservakids
+    audience: reservakids-web
+    access-minutes: ${JWT_ACCESS_MINUTES:15}
+    refresh-days: ${JWT_REFRESH_DAYS:7}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  mail:
+    from: ${MAIL_FROM:no-reply@reservakids.cl}
+  reservas:
+    # Criterio de aceptación RF-05: el bloque queda EN_ESPERA por 48 h
+    expiracion-horas: ${RESERVA_EXPIRACION_HORAS:48}
+    # Falla #1 (2 años): una COTIZADA sin respuesta libera su bloque tras N días
+    cotizacion-expiracion-dias: ${COTIZACION_EXPIRACION_DIAS:14}
+  clientes:
+    # Falla #4 (2 años, Ley 21.719): retención de datos personales por inactividad
+    retencion-meses: ${RETENCION_CLIENTE_MESES:24}
+  tenants:
+    # Falla 3.3 (5 años): ventana de gracia entre el cierre del negocio y su purga física
+    # (plazo de arrepentimiento — reapertura por runbook OPERACION.md §7 — y de descarga)
+    purga-dias-tras-cierre: ${TENANT_PURGA_DIAS:90}
+  # El servidor corre en UTC; el negocio opera en hora chilena
+  zona-horaria: ${APP_TIMEZONE:America/Santiago}
+  security:
+    # Activar SOLO detrás de un reverse proxy (Caddy/nginx) que setee X-Forwarded-For
+    trust-proxy: ${TRUST_PROXY:false}
