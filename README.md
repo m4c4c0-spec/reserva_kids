@@ -80,6 +80,8 @@ POST /api/public/{slug}/reservas             → crea solicitud PENDIENTE
 # Panel negocio (JWT)
 POST /api/auth/register | /login | /refresh
 POST /api/auth/logout    {refreshToken}   # revoca aunque el access esté vencido
+POST /api/auth/reset/solicitar {email}    # 204 siempre (anti-enumeración)
+POST /api/auth/reset/confirmar {token, nuevaPassword}  # un solo uso, 30 min
 GET/POST/PUT/DELETE /api/servicios
 GET/POST/DELETE     /api/calendario/bloques
 GET  /api/reservas?estado=PENDIENTE

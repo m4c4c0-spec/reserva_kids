@@ -24,10 +24,11 @@ El código del MVP está corregido y testeado; las fallas de este año son las m
 - **Cuándo:** el día del primer deploy; legal desde dic-2026.
 - **Acción:** los runbooks ya existen (`OPERACION.md` §3, §4, §6). Convertirlos en checklist bloqueante del deploy: no hay piloto sin los 4 ítems.
 
-### 1.3 🔴 No existe recuperación de contraseña
+### 1.3 ✅ IMPLEMENTADA — No existía recuperación de contraseña
 - **Síntoma:** `AuthService` expone registrar/login/refresh/logout — nada más. El primer dueño que olvide su clave pierde el acceso a su negocio; el "soporte" es el mantenedor haciendo `UPDATE usuario SET password_hash=...` por SSH contra producción, a mano, sin auditoría. Con 5–10 tenants es cuestión de meses, y cada incidente erosiona la confianza en el panel.
 - **Cuándo:** primer olvido real — estadísticamente dentro del año 1.
 - **Acción:** flujo de reset por email (token de un solo uso, 30 min, tabla propia o reutilizar la maquinaria de `refresh_token`). El canal email ya existe (`NotificacionAdapter`). Mientras no exista: runbook escrito del reset manual para no improvisarlo.
+- **Corrección aplicada (Sesión 6, 2026-06-11):** exactamente lo anterior — `V7__password_reset.sql` (SHA-256, un solo uso, `RESET_PASSWORD_MINUTOS`=30), `POST /api/auth/reset/solicitar` (**204 siempre**, anti-enumeración; rate limit ya cubría `/api/auth/**`) y `/reset/confirmar` (revoca todas las sesiones), tenants SUSPENDIDO/CERRADO excluidos en silencio (integra con 3.3), email AFTER_COMMIT con degradación a log sin SMTP, purga diaria + purga en offboarding, `"reset"` agregado a `SLUGS_RESERVADOS` (la falla #4 del año 1 reaparecía con la ruta nueva), vista `/reset` y enlace en el login. Tests: 49/49. Detalle en `BITACORA.md` Paso 32.
 
 ### 1.4 🟡 Spring Boot 3.4.1 ya está fuera de soporte OSS
 - **Síntoma:** la línea 3.4 cerró su soporte OSS en dic-2025 — **el proyecto nace en una versión sin parches**. La línea 3.5 (última 3.x) cierra durante este año; Boot 4 / Framework 7 ya es la corriente. El primer CVE de severidad alta sin backport a 3.4 fuerza una migración bajo presión.
@@ -153,7 +154,7 @@ Cubierto en profundidad por la revisión a 2 años (fallas #1–#12, corregidas)
 2. **Muerte económica (años 2–3):** `tenant.plan` sigue decorativo, el costo sale del bolsillo del mantenedor, y la decisión de cobrar —cada vez más cara de tomar— se posterga hasta que el interés personal se agota. El proyecto no falla: se abandona.
 3. **Muerte por entropía (años 3–5):** las ventanas semestrales decaen con la vida del mantenedor; los EOL (Boot, PG16 nov-2028, distro, Node) se acumulan en silencio hasta que migrar cuesta más que reescribir, y no hay plan de sucesión ni de cierre. La mitigación no es técnica: es la regla de alarma de 5.2 y el runbook de cierre de 5.1, escritos en frío.
 
-**El patrón de fondo:** las revisiones a 1 y 2 años encontraron fallas que se arreglaban con código, y se arreglaron. A 5 años quedan exactamente tres fallas de código (1.3 reset de contraseña, 3.2 anonimización incompleta, 3.3 offboarding de tenant — **3.2 y 3.3 ya implementadas en Sesión 6; solo queda 1.3**) — todo lo demás es calendario, dinero y disciplina. El proyecto ya es mejor que su proceso; el trabajo de los próximos 5 años es que el proceso lo alcance.
+**El patrón de fondo:** las revisiones a 1 y 2 años encontraron fallas que se arreglaban con código, y se arreglaron. A 5 años quedaban exactamente tres fallas de código (1.3 reset de contraseña, 3.2 anonimización incompleta, 3.3 offboarding de tenant) — **las tres implementadas en Sesión 6**. Todo lo que queda es calendario, dinero y disciplina. El proyecto ya es mejor que su proceso; el trabajo de los próximos 5 años es que el proceso lo alcance.
 
 ## Tabla resumen
 
@@ -161,7 +162,7 @@ Cubierto en profundidad por la revisión a 2 años (fallas #1–#12, corregidas)
 |---|---|---|---|---|
 | 1 | 1.1 | Repositorio sin ningún commit | 🔴 | Operativa — **hoy** |
 | 1 | 1.2 | ⏳ del deploy sin ejecutar; Ley 21.719 dic-2026 | 🔴 | Operativa/legal |
-| 1 | 1.3 | Sin recuperación de contraseña | 🔴 | **Código** |
+| 1 | 1.3 | Sin recuperación de contraseña | ✅ | **Implementada** (Sesión 6) |
 | 1 | 1.4 | Boot 3.4.1 ya sin soporte OSS | 🟡 | Stack |
 | 1 | 1.5 | Tokens en sessionStorage con dominio propio | 🟢 | Deuda aceptada que venció |
 | 2 | 2.1 | `plan` decorativo; costos del bolsillo | 🔴 | Negocio |
@@ -182,4 +183,4 @@ Cubierto en profundidad por la revisión a 2 años (fallas #1–#12, corregidas)
 | 5 | 5.3 | Saturación del nicho regional | 🟡 | Negocio |
 | 5 | 5.4 | Secreto JWT de 5 años sin rotar | 🟢 | Higiene |
 
-**Acciones inmediatas derivadas (orden de costo/beneficio):** (1) commit inicial + remoto — hoy; (2) checklist bloqueante de deploy con los ⏳; (3) flujo de reset de contraseña; ~~(4) fix de anonimización en comentarios~~ ✅ hecho (3.2, Sesión 6 — `V6` + ambos caminos de anonimización); ~~(5) runbook de cierre~~ ✅ hecho con la 3.3 (`OPERACION.md` §7).
+**Acciones inmediatas derivadas (orden de costo/beneficio):** ~~(1) commit inicial~~ ✅ hecho (`3395599`; falta el remoto en GitHub); (2) checklist bloqueante de deploy con los ⏳ — **la única acción inmediata que queda**; ~~(3) flujo de reset de contraseña~~ ✅ hecho (1.3, Sesión 6 — V7); ~~(4) fix de anonimización en comentarios~~ ✅ hecho (3.2, Sesión 6 — `V6` + ambos caminos de anonimización); ~~(5) runbook de cierre~~ ✅ hecho con la 3.3 (`OPERACION.md` §7).
