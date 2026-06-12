@@ -69,6 +69,12 @@ async function enviar() {
               class="w-full text-sm text-violet-600 hover:underline">
         {{ modo === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Entra' }}
       </button>
+
+      <!-- Falla 1.3 (revisión 5 años): antes, olvidar la clave = perder el acceso al negocio -->
+      <RouterLink v-if="modo === 'login'" to="/reset"
+                  class="block w-full text-xs text-gray-400 hover:text-violet-600 hover:underline text-center">
+        ¿Olvidaste tu contraseña?
+      </RouterLink>
     </div>
   </main>
 </template>

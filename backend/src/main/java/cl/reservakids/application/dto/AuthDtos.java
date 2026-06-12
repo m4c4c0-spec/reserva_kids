@@ -22,5 +22,12 @@ public final class AuthDtos {
 
     public record RefreshRequest(@NotBlank String refreshToken) {}
 
+    /** Falla 1.3 (revisión a 5 años): recuperación de contraseña. */
+    public record ResetSolicitudRequest(@NotBlank @Email String email) {}
+
+    public record ResetConfirmacionRequest(
+            @NotBlank String token,
+            @NotBlank @Size(min = 8, max = 72) String nuevaPassword) {}
+
     public record TokenResponse(String accessToken, String refreshToken, String slug, String nombreNegocio) {}
 }

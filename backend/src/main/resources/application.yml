@@ -42,8 +42,14 @@ app:
     refresh-days: ${JWT_REFRESH_DAYS:7}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  frontend:
+    # Base de los enlaces que viajan por email (reset de contraseña, falla 1.3)
+    url: ${FRONTEND_URL:http://localhost:5173}
   mail:
     from: ${MAIL_FROM:no-reply@reservakids.cl}
+  password-reset:
+    # Falla 1.3 (5 años): vigencia del enlace de recuperación (un solo uso)
+    minutos: ${RESET_PASSWORD_MINUTOS:30}
   reservas:
     # Criterio de aceptación RF-05: el bloque queda EN_ESPERA por 48 h
     expiracion-horas: ${RESERVA_EXPIRACION_HORAS:48}

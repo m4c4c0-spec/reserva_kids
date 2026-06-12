@@ -4,6 +4,7 @@ import cl.reservakids.application.usecase.NotificacionPort;
 import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.Reserva;
 import cl.reservakids.domain.model.Tenant;
+import cl.reservakids.domain.model.Usuario;
 import cl.reservakids.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,10 @@ public class NotificacionAdapter implements NotificacionPort {
     @Value("${app.mail.from}")
     private String remitente;
 
+    /** Base de los enlaces que viajan por email (reset de contraseña). */
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
     /**
      * Falla #3 (revisión a 2 años): un fallo de SMTP solo se logueaba — si la API key expira
      * o el correo cae a spam, el dueño deja de enterarse de solicitudes nuevas sin ninguna
@@ -64,7 +69,19 @@ public class NotificacionAdapter implements NotificacionPort {
 
     @Override
     public void nuevaSolicitud(Tenant tenant, Reserva reserva, Cliente cliente) {
-        Runnable envio = () -> enviar(tenant, reserva, cliente);
+        ejecutarTrasCommit(() -> enviar(tenant, reserva, cliente));
+    }
+
+    /**
+     * Falla 1.3 (revisión a 5 años): email de recuperación de contraseña. AFTER_COMMIT
+     * como toda notificación: el token debe existir en BD antes de que el enlace llegue.
+     */
+    @Override
+    public void resetPassword(Usuario usuario, String tokenPlano) {
+        ejecutarTrasCommit(() -> enviarReset(usuario, tokenPlano));
+    }
+
+    private void ejecutarTrasCommit(Runnable envio) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -74,6 +91,41 @@ public class NotificacionAdapter implements NotificacionPort {
             });
         } else {
             CompletableFuture.runAsync(envio);
+        }
+    }
+
+    private void enviarReset(Usuario usuario, String tokenPlano) {
+        String link = frontendUrl + "/reset?token=" + URLEncoder.encode(tokenPlano, StandardCharsets.UTF_8);
+        try {
+            JavaMailSender sender = mailSenderProvider.getIfAvailable();
+            if (sender == null) {
+                // Sin SMTP el log es el único canal (MVP): el operador puede pasar el enlace
+                // a mano. Con SMTP configurado el enlace NUNCA se loguea (es una credencial).
+                log.info("Reset de contraseña solicitado para {} [email no configurado]: {}",
+                        usuario.getEmail(), link);
+                return;
+            }
+            SimpleMailMessage mensaje = new SimpleMailMessage();
+            mensaje.setFrom(remitente);
+            mensaje.setTo(usuario.getEmail());
+            mensaje.setSubject("🔑 Restablece tu contraseña — ReservaKids");
+            mensaje.setText("""
+                    Recibimos una solicitud para restablecer tu contraseña.
+
+                    Crea una nueva aquí (el enlace vence en 30 minutos y sirve UNA vez):
+                    %s
+
+                    Si no lo pediste, ignora este correo: tu contraseña sigue igual.
+                    """.formatted(link));
+            sender.send(mensaje);
+            fallosConsecutivos.set(0);
+            log.info("Email de reset de contraseña enviado a {}", usuario.getEmail());
+        } catch (Exception e) {
+            fallosConsecutivos.incrementAndGet();
+            ultimoError = e.getMessage();
+            ultimoFalloEn = OffsetDateTime.now();
+            log.error("Fallo enviando reset de contraseña a {} ({} consecutivos): {}",
+                    usuario.getEmail(), fallosConsecutivos.get(), e.getMessage());
         }
     }
 

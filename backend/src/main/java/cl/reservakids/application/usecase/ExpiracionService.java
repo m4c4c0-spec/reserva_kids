@@ -8,6 +8,7 @@ import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.BloqueDisponibleRepository;
 import cl.reservakids.domain.repository.ClienteRepository;
 import cl.reservakids.domain.repository.PagoRepository;
+import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.ServicioRepository;
@@ -52,6 +53,7 @@ public class ExpiracionService {
     private final PagoRepository pagoRepository;
     private final ServicioRepository servicioRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final Clock clock;
 
     @Value("${app.reservas.expiracion-horas}")
@@ -125,15 +127,18 @@ public class ExpiracionService {
     }
 
     /**
-     * Mantenimiento diario (04:30): purga refresh tokens revocados/expirados.
-     * Sin esto la tabla crece sin límite — cada login y cada rotación insertan una fila.
+     * Mantenimiento diario (04:30): purga refresh tokens revocados/expirados y tokens
+     * de reset de contraseña usados/vencidos (falla 1.3) — ninguna tabla crece sin límite.
      */
     @Scheduled(cron = "0 30 4 * * *")
     @Transactional
     public void purgarRefreshTokens() {
-        int eliminados = refreshTokenRepository.purgarInvalidos(OffsetDateTime.now(clock));
-        if (eliminados > 0) {
-            log.info("Mantenimiento: {} refresh tokens purgados", eliminados);
+        OffsetDateTime ahora = OffsetDateTime.now(clock);
+        int eliminados = refreshTokenRepository.purgarInvalidos(ahora);
+        int resets = passwordResetTokenRepository.purgarInvalidos(ahora);
+        if (eliminados > 0 || resets > 0) {
+            log.info("Mantenimiento: {} refresh tokens y {} tokens de reset purgados",
+                    eliminados, resets);
         }
     }
 
@@ -202,6 +207,7 @@ public class ExpiracionService {
             clienteRepository.eliminarDeTenant(id);
             servicioRepository.eliminarDeTenant(id);
             refreshTokenRepository.eliminarDeTenant(id);
+            passwordResetTokenRepository.eliminarDeTenant(id);
             usuarioRepository.eliminarDeTenant(id);
             tenantRepository.delete(tenant);
             log.info("Offboarding: tenant '{}' (#{}) purgado físicamente ({} días tras su cierre)",

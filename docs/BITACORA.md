@@ -299,3 +299,25 @@ así que todas las reservas tocadas están en estado terminal (nadie más las ed
   `ExpiracionServiceTest`: limpia comentarios del anonimizado, nunca del que sigue activo).
 - `V6` ensayada contra `postgres:16-alpine` con datos reales: reserva del anonimizado →
   `[anonimizado]` + version 0→1; reserva del cliente activo → intacta.
+
+### Paso 32 — Implementación de la falla 1.3: recuperación de contraseña
+
+Antes: olvidar la clave = perder el acceso al negocio (el "soporte" era un UPDATE manual
+por SSH). Iterado contra las demás fallas, reusando maquinaria ya probada:
+
+| Pieza | Diseño / fallas que cubre |
+|---|---|
+| `password_reset_token` (V7): UUID + SHA-256 del token + un solo uso + 30 min | Mismo modelo de seguridad del refresh token (año 1): en BD nunca vive el token en claro |
+| `POST /api/auth/reset/solicitar` — **204 SIEMPRE** | Anti-enumeración de cuentas (endpoint público); el rate limit de `/api/auth/**` ya lo cubre ✅ |
+| Tenant SUSPENDIDO/CERRADO no recibe resets (silencioso) | Integra con la 3.3 — un negocio cerrado no "resucita" por reset |
+| Pedir un reset nuevo invalida los anteriores; confirmar revoca TODAS las sesiones | Si alguien robó la clave vieja, el cambio lo expulsa (reusa `revocarTodosDeUsuario`) |
+| Email AFTER_COMMIT vía `NotificacionPort.resetPassword()`; sin SMTP degrada a log (único canal MVP — con SMTP el enlace JAMÁS se loguea: es una credencial) | Patrón del adaptador (falla #7 año 1: el token debe existir en BD antes de que llegue el enlace) |
+| Purga diaria en el job de las 04:30 + purga del tenant cerrado | 4.2 (tablas no crecen) · 4.4 (idempotente) |
+| `"reset"` agregado a `SLUGS_RESERVADOS` | ¡La falla #4 del año 1 reaparecía!: un negocio con slug `reset` rompería la ruta nueva |
+| Frontend: `/reset` (pedir enlace / definir clave nueva) + "¿Olvidaste tu contraseña?" en login | Self-service: no depende del mantenedor (bus factor 1) |
+
+### Paso 33 — Verificación
+
+- `mvn test`: **BUILD SUCCESS — 49/49** (+5 de reset en `AuthServiceTest`, purgas verificadas).
+- Cadena V1–V7 ensayada completa contra `postgres:16-alpine`.
+- `npm run build`: OK (~55.7 kB gzip).

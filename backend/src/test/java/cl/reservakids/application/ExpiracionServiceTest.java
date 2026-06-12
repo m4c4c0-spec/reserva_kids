@@ -9,6 +9,7 @@ import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.BloqueDisponibleRepository;
 import cl.reservakids.domain.repository.ClienteRepository;
 import cl.reservakids.domain.repository.PagoRepository;
+import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.ServicioRepository;
@@ -44,6 +45,7 @@ class ExpiracionServiceTest {
     @Mock PagoRepository pagoRepository;
     @Mock ServicioRepository servicioRepository;
     @Mock UsuarioRepository usuarioRepository;
+    @Mock PasswordResetTokenRepository passwordResetTokenRepository;
     @Spy Clock clock = Clock.fixed(Instant.parse("2026-06-10T12:00:00Z"), ZoneOffset.UTC);
 
     @InjectMocks ExpiracionService service;
@@ -109,6 +111,8 @@ class ExpiracionServiceTest {
         service.purgarRefreshTokens();
 
         verify(refreshTokenRepository).purgarInvalidos(any());
+        // Falla 1.3 (5 años): el mismo job purga los tokens de reset usados/vencidos
+        verify(passwordResetTokenRepository).purgarInvalidos(any());
     }
 
     /** Falla #4 (revisión 2 años, Ley 21.719): anonimiza inactivos, respeta a quien tenga reservas activas. */
@@ -172,6 +176,7 @@ class ExpiracionServiceTest {
         orden.verify(refreshTokenRepository).eliminarDeTenant(7L);
         orden.verify(usuarioRepository).eliminarDeTenant(7L);
         orden.verify(tenantRepository).delete(cerrado);
+        verify(passwordResetTokenRepository).eliminarDeTenant(7L); // falla 1.3, antes que usuario
     }
 
     /** Idempotencia (falla 4.4): sin tenants vencidos, la pasada no borra nada. */

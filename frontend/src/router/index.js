@@ -6,6 +6,8 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/login' },
     { path: '/login', component: () => import('../views/LoginView.vue') },
+    // Falla 1.3 (5 años): reset de contraseña — "reset" está en SLUGS_RESERVADOS del backend
+    { path: '/reset', component: () => import('../views/ResetPasswordView.vue') },
     {
       path: '/panel',
       component: () => import('../views/DashboardLayout.vue'),

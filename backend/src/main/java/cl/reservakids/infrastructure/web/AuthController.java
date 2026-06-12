@@ -44,4 +44,20 @@ public class AuthController {
                 req == null ? null : req.refreshToken());
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * Falla 1.3 (revisión a 5 años): recuperación de contraseña. 204 SIEMPRE —
+     * no revela si el email existe (anti-enumeración); rate limit ya cubre /api/auth/**.
+     */
+    @PostMapping("/reset/solicitar")
+    public ResponseEntity<Void> solicitarReset(@Valid @RequestBody ResetSolicitudRequest req) {
+        authService.solicitarResetPassword(req.email());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/reset/confirmar")
+    public ResponseEntity<Void> confirmarReset(@Valid @RequestBody ResetConfirmacionRequest req) {
+        authService.confirmarResetPassword(req);
+        return ResponseEntity.noContent().build();
+    }
 }
