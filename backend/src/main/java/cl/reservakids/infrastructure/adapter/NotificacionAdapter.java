@@ -42,8 +42,21 @@ public class NotificacionAdapter implements NotificacionPort {
     private final ObjectProvider<JavaMailSender> mailSenderProvider;
     private final UsuarioRepository usuarioRepository;
 
+    /**
+     * Con `spring.mail.host: ${MAIL_HOST:}` la propiedad SIEMPRE existe (vacía), así que
+     * Spring Boot crea el JavaMailSender igual — y enviar con host "" lanza excepción en
+     * vez de degradar a log. Este guard hace verdadero el contrato "vacío = solo log".
+     */
+    @Value("${spring.mail.host:}")
+    private String mailHost;
+
     @Value("${app.mail.from}")
     private String remitente;
+
+    /** null cuando no hay SMTP configurado (host en blanco) — el llamador degrada a log. */
+    private JavaMailSender senderConfigurado() {
+        return (mailHost == null || mailHost.isBlank()) ? null : mailSenderProvider.getIfAvailable();
+    }
 
     /** Base de los enlaces que viajan por email (reset de contraseña). */
     @Value("${app.frontend.url}")
@@ -55,16 +68,23 @@ public class NotificacionAdapter implements NotificacionPort {
      * señal. Este contador alimenta GET /api/sistema/notificaciones y el aviso del panel.
      */
     private final AtomicInteger fallosConsecutivos = new AtomicInteger();
+    // ultimoError se conserva SOLO para los logs del servidor: puede contener el email de
+    // destino de otro negocio o detalles del SMTP, así que NO viaja en la respuesta del
+    // endpoint (S2: /api/sistema/notificaciones lo ve cualquier usuario autenticado).
     private volatile String ultimoError;
     private volatile OffsetDateTime ultimoFalloEn;
 
-    public record EstadoEnvios(int fallosConsecutivos, String ultimoError,
-                               String ultimoFalloEn, boolean smtpConfigurado) {}
+    /**
+     * S2: el estado del canal SMTP es infraestructura compartida — el contador y la marca de
+     * tiempo del último fallo bastan para que el panel muestre el aviso. El mensaje de error
+     * crudo (ultimoError) queda fuera para no filtrar datos de otro tenant entre negocios.
+     */
+    public record EstadoEnvios(int fallosConsecutivos, String ultimoFalloEn, boolean smtpConfigurado) {}
 
     public EstadoEnvios estadoEnvios() {
-        return new EstadoEnvios(fallosConsecutivos.get(), ultimoError,
+        return new EstadoEnvios(fallosConsecutivos.get(),
                 ultimoFalloEn == null ? null : ultimoFalloEn.toString(),
-                mailSenderProvider.getIfAvailable() != null);
+                senderConfigurado() != null);
     }
 
     @Override
@@ -97,7 +117,7 @@ public class NotificacionAdapter implements NotificacionPort {
     private void enviarReset(Usuario usuario, String tokenPlano) {
         String link = frontendUrl + "/reset?token=" + URLEncoder.encode(tokenPlano, StandardCharsets.UTF_8);
         try {
-            JavaMailSender sender = mailSenderProvider.getIfAvailable();
+            JavaMailSender sender = senderConfigurado();
             if (sender == null) {
                 // Sin SMTP el log es el único canal (MVP): el operador puede pasar el enlace
                 // a mano. Con SMTP configurado el enlace NUNCA se loguea (es una credencial).
@@ -133,7 +153,7 @@ public class NotificacionAdapter implements NotificacionPort {
         try {
             String destino = usuarioRepository.findFirstByTenantIdOrderById(tenant.getId())
                     .map(u -> u.getEmail()).orElse(null);
-            JavaMailSender sender = mailSenderProvider.getIfAvailable();
+            JavaMailSender sender = senderConfigurado();
 
             if (sender == null || destino == null) {
                 log.info("Nueva solicitud #{} para tenant '{}' — cliente {} ({}) [email no configurado, solo log]",
@@ -185,6 +205,11 @@ public class NotificacionAdapter implements NotificacionPort {
         String telefono = cliente.getTelefono().replaceAll("[^0-9]", "");
         String mensaje = "Hola %s! Te escribo por tu solicitud de reserva #%d 🎉"
                 .formatted(cliente.getNombre(), reserva.getId());
+                
+        if (reserva.getEstado() == cl.reservakids.domain.model.EstadoReserva.COTIZADA && reserva.getMpInitPoint() != null) {
+            mensaje += "\n\nPuedes pagar la seña de $" + reserva.getSeniaClp() + " directamente aquí de forma segura con Mercado Pago:\n" + reserva.getMpInitPoint();
+        }
+        
         return "https://wa.me/" + telefono + "?text=" + URLEncoder.encode(mensaje, StandardCharsets.UTF_8);
     }
 }

@@ -20,3 +20,8 @@ frontend/dist/
 
 # Herramientas de IA (artefactos locales)
 .aider*
+
+# Fuentes de diseño (mockups/exports) — no son código, viven aparte
+/Diseno_*.zip
+/Diseno*.zip
+/DISENO_*.png

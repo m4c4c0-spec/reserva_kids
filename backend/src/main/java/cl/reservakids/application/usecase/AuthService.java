@@ -51,18 +51,29 @@ public class AuthService {
     private static final java.util.Set<String> SLUGS_RESERVADOS = java.util.Set.of(
             "login", "panel", "api", "admin", "auth", "www", "app",
             "static", "assets", "public", "docs", "ayuda", "soporte",
-            "reset"); // falla 1.3: ruta del frontend para recuperar contraseña
+            "reset", // falla 1.3: ruta del frontend para recuperar contraseña
+            "clientes"); // área de cliente (login + directorio) — no puede ser un slug de negocio
+
+    /**
+     * El email es identidad de login: se guarda y se busca SIEMPRE normalizado
+     * (trim + minúsculas). Sin esto, registrarse como "Dueno@Test.cl" hacía
+     * imposible entrar (o recibir el reset) escribiendo "dueno@test.cl".
+     */
+    private static String normalizarEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(java.util.Locale.ROOT);
+    }
 
     /** RF-01: registro de negocio (crea tenant + usuario dueño). */
     @Transactional
     public TokenResponse registrar(RegistroRequest req) {
+        String email = normalizarEmail(req.email());
         if (SLUGS_RESERVADOS.contains(req.slug())) {
             throw new IllegalArgumentException("Ese slug está reservado, elige otro");
         }
         if (tenantRepository.existsBySlug(req.slug())) {
             throw new IllegalArgumentException("El slug ya está en uso");
         }
-        if (usuarioRepository.existsByEmail(req.email())) {
+        if (usuarioRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("El email ya está registrado");
         }
         Tenant tenant = new Tenant();
@@ -72,7 +83,7 @@ public class AuthService {
 
         Usuario usuario = new Usuario();
         usuario.setTenantId(tenant.getId());
-        usuario.setEmail(req.email());
+        usuario.setEmail(email);
         usuario.setPasswordHash(passwordEncoder.encode(req.password()));
         usuarioRepository.save(usuario);
 
@@ -81,7 +92,7 @@ public class AuthService {
 
     @Transactional
     public TokenResponse login(LoginRequest req) {
-        Usuario usuario = usuarioRepository.findByEmail(req.email())
+        Usuario usuario = usuarioRepository.findByEmail(normalizarEmail(req.email()))
                 .orElseThrow(() -> new BadCredentialsException("Credenciales inválidas"));
         if (!passwordEncoder.matches(req.password(), usuario.getPasswordHash())) {
             throw new BadCredentialsException("Credenciales inválidas");
@@ -156,7 +167,7 @@ public class AuthService {
      */
     @Transactional
     public void solicitarResetPassword(String email) {
-        usuarioRepository.findByEmail(email).ifPresent(usuario -> {
+        usuarioRepository.findByEmail(normalizarEmail(email)).ifPresent(usuario -> {
             Tenant tenant = tenantRepository.findById(usuario.getTenantId()).orElseThrow();
             if (!tenant.isActivo()) {
                 return; // suspendido/cerrado (falla 3.3): sin reset, y sin revelar nada
