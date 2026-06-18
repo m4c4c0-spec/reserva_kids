@@ -13,6 +13,8 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
 
     List<Pago> findByReservaIdOrderByFecha(Long reservaId);
 
+    boolean existsByReferenciaExterna(String referenciaExterna);
+
     /** Saldo real: solo pagos CONFIRMADOS; las devoluciones restan (libro contable). */
     @Query("""
             SELECT COALESCE(SUM(CASE WHEN p.tipo = 'DEVOLUCION' THEN -p.montoClp ELSE p.montoClp END), 0)

@@ -39,6 +39,7 @@ public class TenantService {
     private final PagoRepository pagoRepository;
     private final UsuarioRepository usuarioRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final cl.reservakids.infrastructure.security.CredentialCipher credentialCipher;
     private final Clock clock;
 
     /** Export completo del tenant. Disponible siempre, no solo al cerrar. */
@@ -53,6 +54,20 @@ public class TenantService {
                 bloqueRepository.findByTenantIdOrderByFechaAscHoraInicioAsc(tenantId).stream().map(BloqueExport::de).toList(),
                 reservaRepository.findByTenantIdOrderByCreadaEnDesc(tenantId).stream().map(ReservaExport::de).toList(),
                 pagoRepository.findDeTenant(tenantId).stream().map(PagoExport::de).toList());
+    }
+
+    /**
+     * Actualiza las credenciales de Mercado Pago del tenant.
+     * S1/S3: se guardan cifradas en reposo (CredentialCipher). El secreto del webhook es
+     * opcional: si llega vacío/null se deja como está (no se borra al guardar solo el token).
+     */
+    @Transactional
+    public void actualizarTokenMp(Long tenantId, ActualizarTokenRequest req) {
+        Tenant tenant = buscar(tenantId);
+        tenant.setMpAccessToken(credentialCipher.encrypt(req.mpAccessToken()));
+        if (req.mpWebhookSecret() != null && !req.mpWebhookSecret().isBlank()) {
+            tenant.setMpWebhookSecret(credentialCipher.encrypt(req.mpWebhookSecret()));
+        }
     }
 
     /**

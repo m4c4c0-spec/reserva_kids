@@ -44,6 +44,14 @@ public class Tenant {
     @Column(name = "cerrado_en")
     private OffsetDateTime cerradoEn;
 
+    /** S1: Access Token de Mercado Pago — cifrado en reposo (ver CredentialCipher). */
+    @Column(name = "mp_access_token")
+    private String mpAccessToken;
+
+    /** S3: secreto de firma del webhook de MP (panel de MP) — cifrado en reposo. */
+    @Column(name = "mp_webhook_secret")
+    private String mpWebhookSecret;
+
     public boolean isActivo() {
         return ESTADO_ACTIVO.equals(estado);
     }

@@ -73,6 +73,12 @@ public class Reserva {
     @Column(name = "cotizada_en")
     private OffsetDateTime cotizadaEn;
 
+    @Column(name = "mp_preference_id")
+    private String mpPreferenceId;
+
+    @Column(name = "mp_init_point")
+    private String mpInitPoint;
+
     /** Regla de dominio: solo transiciones válidas de la máquina de estados (§4.3). */
     public void transicionarA(EstadoReserva destino) {
         if (!estado.puedeTransicionarA(destino)) {

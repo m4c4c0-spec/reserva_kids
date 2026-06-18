@@ -32,20 +32,22 @@ public final class ReservaDtos {
             @NotBlank @Size(max = 30) String medio,
             @Size(max = 300) String comprobanteUrl,
             // ABONO (default) o DEVOLUCION — el monto siempre es positivo, el tipo da el signo
-            @Pattern(regexp = "ABONO|DEVOLUCION") String tipo) {}
+            @Pattern(regexp = "ABONO|DEVOLUCION") String tipo,
+            @Size(max = 120) String referenciaExterna) {}
 
     public record ReservaResponse(
             Long id, String estado, Long servicioId, Long bloqueId, Long clienteId,
             Integer numNinos, String comuna, String comentarios,
             Integer totalClp, Integer seniaClp, Integer pagadoClp, Integer saldoClp,
-            String creadaEn, String linkWhatsApp) {
+            String creadaEn, String linkWhatsApp, String mpInitPoint) {
 
         public static ReservaResponse de(Reserva r, int pagado, String linkWhatsApp) {
             Integer saldo = r.getTotalClp() == null ? null : r.getTotalClp() - pagado;
             return new ReservaResponse(r.getId(), r.getEstado().name(), r.getServicioId(),
                     r.getBloqueId(), r.getClienteId(), r.getNumNinos(), r.getComuna(),
                     r.getComentarios(), r.getTotalClp(), r.getSeniaClp(), pagado, saldo,
-                    r.getCreadaEn() == null ? null : r.getCreadaEn().toString(), linkWhatsApp);
+                    r.getCreadaEn() == null ? null : r.getCreadaEn().toString(), linkWhatsApp,
+                    r.getMpInitPoint());
         }
     }
 }

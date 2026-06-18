@@ -6,6 +6,7 @@ import cl.reservakids.domain.exception.RecursoNoEncontradoException;
 import cl.reservakids.domain.model.*;
 import cl.reservakids.domain.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
  * Casos de uso del flujo de reserva (SDLC §4.4):
  * CrearReserva (público) → CotizarReserva → ConfirmarReserva → RegistrarPago / Cancelar.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReservaService {
@@ -32,6 +34,7 @@ public class ReservaService {
     private final ReservaRepository reservaRepository;
     private final PagoRepository pagoRepository;
     private final NotificacionPort notificacion;
+    private final PasarelaPagoPort pasarelaPagoPort;
 
     /**
      * RF-05 + RNF-05: solicitud pública. La toma del bloque es un UPDATE atómico
@@ -147,6 +150,25 @@ public class ReservaService {
         reserva.setTotalClp(req.totalClp());
         reserva.setSeniaClp(req.seniaClp());
         reserva.setCotizadaEn(OffsetDateTime.now()); // base de la expiración de cotizaciones
+
+        Tenant tenant = tenantRepository.findById(tenantId).orElseThrow();
+        if (tenant.getMpAccessToken() != null && !tenant.getMpAccessToken().isBlank()) {
+            // B2: el link de pago es OPCIONAL. Una caída de MP no debe tumbar la cotización
+            // (antes la RuntimeException del adaptador hacía rollback de todo → 500). Si MP
+            // falla, la cotización se guarda igual sin link; el dueño puede cobrar la seña por
+            // otro medio o reintentar editando la cotización.
+            try {
+                PasarelaPagoPort.PreferenciaPagoResponse pref = pasarelaPagoPort.crearPreferenciaDePago(reserva, tenant);
+                if (pref != null) {
+                    reserva.setMpPreferenceId(pref.preferenceId());
+                    reserva.setMpInitPoint(pref.initPoint());
+                }
+            } catch (RuntimeException e) {
+                log.warn("Cotización #{}: no se pudo generar el link de pago de Mercado Pago ({}); "
+                        + "la cotización se guarda sin link", reserva.getId(), e.getMessage());
+            }
+        }
+
         return respuesta(reserva, null);
     }
 
@@ -211,8 +233,39 @@ public class ReservaService {
         pago.setMedio(req.medio());
         pago.setComprobanteUrl(req.comprobanteUrl());
         pago.setRegistradoPor(usuarioId); // auditoría: quién lo anotó
+        pago.setReferenciaExterna(req.referenciaExterna());
         pagoRepository.save(pago);
         return respuesta(reserva, null);
+    }
+
+    /** Procesa webhook IPN de Mercado Pago */
+    @Transactional
+    public void procesarWebhookPago(Long tenantId, Long reservaId, String paymentId, Integer montoPagado, String estado) {
+        Reserva reserva = buscar(tenantId, reservaId);
+        
+        // Si el pago ya fue registrado antes (idempotencia)
+        if (pagoRepository.existsByReferenciaExterna(paymentId)) {
+            return;
+        }
+
+        if ("approved".equals(estado)) {
+            // PagoRequest(montoClp, medio, comprobanteUrl, tipo, referenciaExterna) —
+            // el orden importa: antes se registraba medio="ABONO" y tipo=null.
+            PagoRequest req = new PagoRequest(montoPagado, "MERCADOPAGO", null, Pago.TIPO_ABONO, paymentId);
+            registrarPago(tenantId, null, reservaId, req);
+
+            // B3: solo COTIZADA → CONFIRMADA es transición válida. El link de pago únicamente
+            // se genera al cotizar, así que un pago aprobado siempre llega sobre una COTIZADA;
+            // intentar confirmar una PENDIENTE lanzaba TransicionInvalidaException → 500 → MP
+            // reintentaba el webhook para siempre. Otros estados (ya CONFIRMADA, REALIZADA) se
+            // ignoran: el pago igual quedó registrado arriba (idempotente por referencia_externa).
+            if (reserva.getEstado() == EstadoReserva.COTIZADA) {
+                confirmar(tenantId, reservaId);
+            } else {
+                log.info("Webhook MP: pago {} registrado en reserva #{} (estado {}); sin transición",
+                        paymentId, reservaId, reserva.getEstado());
+            }
+        }
     }
 
     private Reserva buscar(Long tenantId, Long id) {

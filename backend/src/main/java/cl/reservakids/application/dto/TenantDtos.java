@@ -16,6 +16,9 @@ public final class TenantDtos {
     /** Anti cierre accidental: el dueño debe escribir el slug exacto de su negocio. */
     public record CerrarRequest(@NotBlank String slugConfirmacion) {}
 
+    /** S3: mpWebhookSecret es opcional (el secreto de firma del webhook del panel de MP). */
+    public record ActualizarTokenRequest(String mpAccessToken, String mpWebhookSecret) {}
+
     /**
      * Export completo del tenant en JSON plano (agnóstico del motor de BD — falla 3.1):
      * es la copia del dueño al irse Y el insumo del cierre responsable del servicio (5.1).

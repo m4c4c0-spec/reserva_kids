@@ -132,7 +132,7 @@ class ReservaServiceTest {
         when(pagoRepository.totalPagado(40L)).thenReturn(30_000);
 
         assertThrows(IllegalArgumentException.class, () -> service.registrarPago(1L, 9L, 40L,
-                new PagoRequest(50_000, "TRANSFERENCIA", null, "DEVOLUCION")));
+                new PagoRequest(50_000, "TRANSFERENCIA", null, "DEVOLUCION", null)));
         verify(pagoRepository, never()).save(any());
     }
 

@@ -26,6 +26,12 @@ public class TenantController {
         return tenantService.exportar(principal.tenantId());
     }
 
+    @PutMapping("/configuracion")
+    public void actualizarConfiguracion(@AuthenticationPrincipal AuthPrincipal principal,
+                                        @Valid @RequestBody cl.reservakids.application.dto.TenantDtos.ActualizarTokenRequest req) {
+        tenantService.actualizarTokenMp(principal.tenantId(), req);
+    }
+
     @PostMapping("/cerrar")
     public ExportResponse cerrar(@AuthenticationPrincipal AuthPrincipal principal,
                                  @Valid @RequestBody CerrarRequest req) {
