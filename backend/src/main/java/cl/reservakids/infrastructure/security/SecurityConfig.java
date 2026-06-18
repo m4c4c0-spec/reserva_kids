@@ -43,9 +43,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Falla #8 (2 años): health sin auth para Docker/uptime monitor (sin detalles)
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers("/api/public/**", "/api/auth/**").permitAll()
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/**").authenticated()
+                        .requestMatchers("/api/public/**", "/api/auth/**", "/api/cliente-auth/**").permitAll()
+                        // Área de cliente (apoderado): directorio de negocios — rol CLIENTE.
+                        .requestMatchers("/api/cliente/**").hasRole("CLIENTE")
+                        // Resto del panel (reservas, servicios, calendario, tenant…): solo el dueño.
+                        // Antes era authenticated() a secas: un token de cliente podía tocar
+                        // endpoints de negocio (con tenantId null → errores). Ahora exige DUENO.
+                        .requestMatchers("/api/**").hasRole("DUENO")
                         .anyRequest().denyAll())
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

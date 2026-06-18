@@ -53,6 +53,22 @@ public class JwtService implements TokenPort {
                 .compact();
     }
 
+    /** Cuenta de cliente: rol CLIENTE y SIN tenantId (no pertenece a ningún negocio). */
+    @Override
+    public String emitirAccessTokenCliente(Long cuentaId, String email) {
+        Instant ahora = Instant.now();
+        return Jwts.builder()
+                .subject(String.valueOf(cuentaId))
+                .issuer(issuer)
+                .audience().add(audience).and()
+                .issuedAt(Date.from(ahora))
+                .expiration(Date.from(ahora.plus(accessTtl)))
+                .claim("rol", "CLIENTE")
+                .claim("email", email)
+                .signWith(key)
+                .compact();
+    }
+
     /** Lanza JwtException si la firma, iss, aud o exp no son válidos. */
     public AuthPrincipal validar(String token) {
         Claims claims = Jwts.parser()
@@ -63,11 +79,12 @@ public class JwtService implements TokenPort {
                 .parseSignedClaims(token)
                 .getPayload();
         // Jackson deserializa números pequeños como Integer: pedir Long.class directo
-        // lanzaría ClassCastException en cuanto un tenantId real viaje en el token
+        // lanzaría ClassCastException en cuanto un tenantId real viaje en el token.
+        // Las cuentas de cliente (rol CLIENTE) NO llevan tenantId → null.
         Number tenantId = (Number) claims.get("tenantId");
         return new AuthPrincipal(
                 Long.valueOf(claims.getSubject()),
-                tenantId.longValue(),
+                tenantId == null ? null : tenantId.longValue(),
                 claims.get("rol", String.class));
     }
 }
