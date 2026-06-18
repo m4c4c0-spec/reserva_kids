@@ -2,10 +2,17 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import { useClienteAuthStore } from '../stores/clienteAuth'
+// Diseño Festive: fondo pastel + personajes 3D (mismos assets del login/panel)
+import bgV2 from '../assets/login-bg-v2.webp'
+import charBalloon from '../assets/char-balloon.png'
+import charCake from '../assets/char-cake.png'
 
 const route = useRoute()
 const slug = route.params.slug
-const baseURL = (import.meta.env.VITE_API_URL || 'http://localhost:8080') + '/api'
+const clienteAuth = useClienteAuthStore()
+// dev: '' → '/api' relativo (proxy de Vite); prod: VITE_API_URL con el dominio
+const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
 
 const negocio = ref(null)
 const noExiste = ref(false)
@@ -41,6 +48,10 @@ async function enviar() {
     const { data } = await axios.post(`${baseURL}/public/${slug}/reservas`, {
       ...seleccion.value,
       ...form.value,
+      // v-model.number deja '' si el campo queda vacío y Jackson rechaza "" como
+      // Integer → 400 confuso para el cliente; el backend espera null
+      numNinos: form.value.numNinos || null,
+      email: form.value.email || null,
     })
     exito.value = data
   } catch (e) {
@@ -54,26 +65,50 @@ async function enviar() {
 const clp = (n) => n?.toLocaleString('es-CL', { style: 'currency', currency: 'CLP' })
 
 onMounted(async () => {
+  // Si el cliente inició sesión, prellenamos su nombre/email (editable; el teléfono
+  // no lo tiene la cuenta, lo escribe igual). Si entra anónimo, el formulario va vacío.
+  if (clienteAuth.autenticado) {
+    form.value.nombreContacto = clienteAuth.nombre || ''
+    form.value.email = clienteAuth.email || ''
+  }
   await cargarNegocio()
   if (negocio.value) await cargarDisponibilidad()
 })
 </script>
 
 <template>
-  <main class="min-h-screen bg-violet-50">
-    <div v-if="noExiste" class="p-10 text-center text-gray-500">Negocio no encontrado 😕</div>
+  <main class="min-h-screen bg-surface bg-cover bg-center bg-fixed"
+        :style="{ backgroundImage: `url(${bgV2})` }">
+    <div v-if="noExiste" class="min-h-screen flex flex-col items-center justify-center p-10 text-center">
+      <img :src="charBalloon" alt="" class="w-32 h-32 object-contain drop-shadow-xl character-img animate-floating" />
+      <p class="mt-4 font-display font-bold text-2xl text-on-surface">Negocio no encontrado 😕</p>
+    </div>
 
-    <div v-else-if="negocio" class="max-w-2xl mx-auto p-4 space-y-6">
-      <header class="text-center py-6">
-        <h1 class="text-3xl font-bold text-violet-700">🎈 {{ negocio.nombre }}</h1>
-        <p class="text-gray-500">Cotiza y reserva tu cumpleaños en minutos</p>
+    <div v-else-if="negocio" class="max-w-2xl mx-auto p-5 space-y-6">
+      <header class="text-center pt-8 pb-2 relative">
+        <div class="flex justify-center mb-2 h-28">
+          <img :src="charBalloon" alt="" class="w-28 h-28 object-contain drop-shadow-xl character-img animate-floating" />
+        </div>
+        <h1 class="font-display font-extrabold text-3xl md:text-4xl tracking-tight text-primary">{{ negocio.nombre }}</h1>
+        <p class="font-medium text-on-surface-variant mt-1">Cotiza y reserva tu cumpleaños en minutos 🎉</p>
       </header>
 
+      <!-- Mensaje de retorno Mercado Pago -->
+      <div v-if="route.query.pago === 'exito'" class="bg-[#dcfce7] text-green-800 font-bold p-4 rounded-2xl text-center shadow-soft">
+        ¡Pago de seña exitoso! La reserva será confirmada pronto.
+      </div>
+      <div v-else-if="route.query.pago === 'pendiente'" class="bg-tertiary-fixed text-on-tertiary-fixed font-bold p-4 rounded-2xl text-center shadow-soft">
+        El pago está pendiente de confirmación. Te avisaremos cuando se acredite.
+      </div>
+      <div v-else-if="route.query.pago === 'fallo'" class="bg-error-container text-on-error-container font-bold p-4 rounded-2xl text-center shadow-soft">
+        El pago no se pudo procesar o fue cancelado. Por favor, intenta nuevamente más tarde.
+      </div>
+
       <!-- éxito -->
-      <div v-if="exito" class="bg-white rounded-2xl shadow p-6 text-center space-y-2">
-        <p class="text-4xl">🎉</p>
-        <h2 class="text-xl font-bold">¡Solicitud #{{ exito.id }} enviada!</h2>
-        <p class="text-gray-600 text-sm">
+      <div v-if="exito" class="glass-card rounded-3xl shadow-lifted p-8 text-center space-y-3 relative overflow-hidden">
+        <img :src="charCake" alt="" class="w-24 h-24 object-contain mx-auto drop-shadow-xl character-img animate-floating" />
+        <h2 class="font-display font-extrabold text-2xl text-primary">¡Solicitud #{{ exito.id }} enviada!</h2>
+        <p class="font-medium text-on-surface-variant text-sm">
           El negocio recibió tu solicitud y te contactará pronto con la cotización.
           Tu fecha queda en espera por 48 horas.
         </p>
@@ -82,18 +117,21 @@ onMounted(async () => {
       <template v-else>
         <!-- 1. Catálogo (RF-03) -->
         <section class="space-y-3">
-          <h2 class="font-bold text-lg">1. Elige un servicio</h2>
+          <h2 class="font-display font-bold text-lg flex items-center gap-2 text-on-surface">
+            <span class="w-7 h-7 rounded-full bg-primary-container text-on-primary-container text-sm font-bold flex items-center justify-center shrink-0">1</span>
+            Elige un servicio
+          </h2>
           <ul class="grid gap-3 sm:grid-cols-2">
             <li v-for="s in negocio.servicios" :key="s.id">
               <button @click="seleccion.servicioId = s.id"
-                      class="w-full text-left bg-white rounded-xl shadow p-4 border-2 transition"
-                      :class="seleccion.servicioId === s.id ? 'border-violet-500' : 'border-transparent'">
-                <div class="flex justify-between">
-                  <h3 class="font-semibold">{{ s.nombre }}</h3>
-                  <span class="text-violet-700 font-bold">{{ clp(s.precioClp) }}</span>
+                      class="w-full text-left bg-surface-lowest rounded-3xl shadow-soft p-5 border-2 transition-all hover:shadow-lifted hover:-translate-y-0.5"
+                      :class="seleccion.servicioId === s.id ? 'border-primary ring-4 ring-primary-fixed' : 'border-transparent'">
+                <div class="flex justify-between items-start gap-2">
+                  <h3 class="font-display font-bold text-on-surface">{{ s.nombre }}</h3>
+                  <span class="text-primary font-display font-extrabold whitespace-nowrap">{{ clp(s.precioClp) }}</span>
                 </div>
-                <p class="text-sm text-gray-500">{{ s.descripcion }}</p>
-                <p class="text-xs text-gray-400">
+                <p class="text-sm font-medium text-on-surface-variant mt-1">{{ s.descripcion }}</p>
+                <p class="text-xs font-bold text-outline mt-1">
                   <span v-if="s.duracionMin">{{ s.duracionMin }} min</span>
                   <span v-if="s.capacidad"> · hasta {{ s.capacidad }} niños</span>
                 </p>
@@ -104,16 +142,23 @@ onMounted(async () => {
 
         <!-- 2. Fecha (RF-04) -->
         <section class="space-y-3">
-          <div class="flex items-center justify-between">
-            <h2 class="font-bold text-lg">2. Elige fecha y hora</h2>
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="font-display font-bold text-lg flex items-center gap-2 text-on-surface">
+              <span class="w-7 h-7 rounded-full bg-primary-container text-on-primary-container text-sm font-bold flex items-center justify-center shrink-0">2</span>
+              Elige fecha y hora
+            </h2>
             <input v-model="mes" type="month" @change="cargarDisponibilidad"
-                   class="border rounded-lg px-2 py-1 text-sm bg-white" />
+                   class="bg-surface-high rounded-full px-4 py-2 text-sm font-bold text-on-surface border-none focus:outline-none focus:ring-2 focus:ring-primary-container cursor-pointer" />
           </div>
-          <p v-if="!bloques.length" class="text-sm text-gray-500">Sin horarios disponibles este mes — prueba el siguiente.</p>
+          <p v-if="!bloques.length" class="font-medium text-on-surface-variant text-sm bg-surface-container rounded-2xl px-4 py-6 text-center">
+            🗓️ Sin horarios disponibles este mes — prueba el siguiente.
+          </p>
           <div class="flex flex-wrap gap-2">
             <button v-for="b in bloques" :key="b.id" @click="seleccion.bloqueId = b.id"
-                    class="bg-white rounded-lg shadow px-3 py-2 text-sm border-2 transition"
-                    :class="seleccion.bloqueId === b.id ? 'border-violet-500' : 'border-transparent'">
+                    class="rounded-full px-4 py-2 text-sm font-bold border-2 transition-all shadow-soft hover:shadow-lifted active:scale-95"
+                    :class="seleccion.bloqueId === b.id
+                      ? 'bg-secondary-container text-on-primary border-secondary-container'
+                      : 'bg-surface-lowest text-on-surface border-transparent'">
               {{ b.fecha }} · {{ b.horaInicio.slice(0, 5) }}
             </button>
           </div>
@@ -121,35 +166,47 @@ onMounted(async () => {
 
         <!-- 3. Formulario (RF-05) -->
         <section v-if="seleccion.servicioId && seleccion.bloqueId" class="space-y-3">
-          <h2 class="font-bold text-lg">3. Tus datos</h2>
-          <form @submit.prevent="enviar" class="bg-white rounded-2xl shadow p-4 grid gap-3 sm:grid-cols-2">
+          <h2 class="font-display font-bold text-lg flex items-center gap-2 text-on-surface">
+            <span class="w-7 h-7 rounded-full bg-primary-container text-on-primary-container text-sm font-bold flex items-center justify-center shrink-0">3</span>
+            Tus datos
+          </h2>
+          <p v-if="clienteAuth.autenticado"
+             class="flex items-center gap-2 text-sm font-semibold text-on-secondary-container bg-secondary-fixed rounded-2xl px-4 py-2">
+            <span class="material-symbols-outlined text-[18px]">badge</span>
+            Reservando como <strong>{{ clienteAuth.nombre || clienteAuth.email }}</strong> — completa tu teléfono
+          </p>
+          <form @submit.prevent="enviar" class="bg-surface-lowest rounded-3xl shadow-soft p-5 grid gap-3 sm:grid-cols-2">
             <input v-model="form.nombreContacto" required maxlength="120" placeholder="Tu nombre"
-                   class="border rounded-lg px-3 py-2" />
+                   class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors" />
             <input v-model="form.telefono" required maxlength="30" placeholder="Teléfono (WhatsApp)"
-                   class="border rounded-lg px-3 py-2" />
+                   class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors" />
             <input v-model="form.email" type="email" placeholder="Email (opcional)"
-                   class="border rounded-lg px-3 py-2" />
+                   class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors" />
             <input v-model.number="form.numNinos" type="number" min="1" placeholder="Nº de niños"
-                   class="border rounded-lg px-3 py-2" />
+                   class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors" />
             <input v-model="form.comuna" maxlength="80" placeholder="Comuna"
-                   class="border rounded-lg px-3 py-2 sm:col-span-2" />
+                   class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors sm:col-span-2" />
             <textarea v-model="form.comentarios" maxlength="2000" rows="3"
                       placeholder="Comentarios (tema del cumpleaños, dirección, etc.)"
-                      class="border rounded-lg px-3 py-2 sm:col-span-2"></textarea>
+                      class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors sm:col-span-2"></textarea>
             <!-- Ley 21.719: consentimiento expreso del titular (falla #4, revisión 2 años) -->
-            <label class="flex items-start gap-2 text-xs text-gray-500 sm:col-span-2">
-              <input v-model="form.aceptaDatos" type="checkbox" required class="mt-0.5 accent-violet-600" />
+            <label class="flex items-start gap-2 text-xs font-medium text-on-surface-variant sm:col-span-2">
+              <input v-model="form.aceptaDatos" type="checkbox" required class="mt-0.5 w-4 h-4 accent-[#b5007d]" />
               <span>Autorizo al negocio a usar mis datos de contacto para gestionar esta solicitud
                 (Ley 21.719). Puedes pedir su eliminación cuando quieras.</span>
             </label>
-            <p v-if="error" class="text-sm text-red-600 sm:col-span-2">{{ error }}</p>
+            <p v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2 sm:col-span-2">{{ error }}</p>
             <button :disabled="enviando"
-                    class="sm:col-span-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg py-3 font-semibold disabled:opacity-50">
+                    class="sm:col-span-2 bg-primary-container text-on-primary-container rounded-full py-3 font-bold shadow-md hover:bg-primary-fixed hover:shadow-lifted active:scale-95 transition-all disabled:opacity-50">
               {{ enviando ? 'Enviando…' : 'Solicitar cotización 🎉' }}
             </button>
           </form>
         </section>
       </template>
+
+      <footer class="text-center text-xs font-medium text-outline pt-2 pb-8">
+        Hecho con 🎈 en ReservaKids
+      </footer>
     </div>
   </main>
 </template>

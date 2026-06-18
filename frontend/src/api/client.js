@@ -1,8 +1,11 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
+import router from '../router'
 
 const api = axios.create({
-  baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:8080') + '/api',
+  // En dev VITE_API_URL no está seteada → base relativa '/api', que el proxy de Vite
+  // reenvía al backend (mismo origen, sin CORS). En prod VITE_API_URL trae el dominio.
+  baseURL: (import.meta.env.VITE_API_URL || '') + '/api',
 })
 
 api.interceptors.request.use((config) => {
@@ -28,6 +31,9 @@ api.interceptors.response.use(
       } catch {
         refreshing = null
         auth.logoutLocal()
+        // Sin esto el usuario quedaba en un panel "roto" en silencio: cada vista
+        // fallando con 401 y sin pista de que la sesión murió.
+        router.push('/login')
       }
     }
     return Promise.reject(error)

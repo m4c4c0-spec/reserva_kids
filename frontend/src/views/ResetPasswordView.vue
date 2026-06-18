@@ -5,6 +5,9 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../api/client'
+import charHat from '../assets/char-hat.png'
+// Diseño V2: fondo pastel con globos y cabritas (DISENO_LOGIN_V2.png)
+import bgV2 from '../assets/login-bg-v2.webp'
 
 const route = useRoute()
 const router = useRouter()
@@ -45,45 +48,61 @@ async function confirmar() {
 </script>
 
 <template>
-  <main class="min-h-screen bg-violet-50 flex items-center justify-center p-4">
-    <div class="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4">
-      <h1 class="text-2xl font-bold text-violet-700 text-center">🔑 Recuperar contraseña</h1>
+  <main class="min-h-screen bg-surface bg-cover bg-center flex flex-col justify-center items-center p-5 relative overflow-hidden"
+        :style="{ backgroundImage: `url(${bgV2})` }">
 
-      <!-- Paso 2: con token en la URL, definir la contraseña nueva -->
-      <form v-if="token" @submit.prevent="confirmar" class="space-y-3">
-        <p class="text-sm text-gray-500 text-center">Escribe tu contraseña nueva.</p>
-        <input v-model="password" type="password" required minlength="8"
-               placeholder="Contraseña nueva (mín. 8)" class="w-full border rounded-lg px-3 py-2" />
-        <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-        <button :disabled="cargando"
-                class="w-full bg-violet-600 hover:bg-violet-700 text-white rounded-lg py-2 font-semibold disabled:opacity-50">
-          {{ cargando ? 'Guardando…' : 'Guardar contraseña' }}
-        </button>
-      </form>
+    <div class="w-full max-w-md relative z-10">
+      <div class="text-center mb-8">
+        <div class="flex justify-center mb-4 h-28">
+          <img :src="charHat" alt="Personaje gorro de fiesta"
+               class="w-28 h-28 object-contain drop-shadow-xl character-img animate-floating" />
+        </div>
+        <h1 class="font-display font-extrabold text-3xl tracking-tight text-primary">Recuperar contraseña</h1>
+      </div>
 
-      <!-- Paso 1: pedir el enlace por email -->
-      <template v-else>
-        <p v-if="enviado" class="text-sm text-green-700 text-center">
-          Si el correo existe, te enviamos un enlace para crear una contraseña nueva.
-          Revisa tu bandeja (vence en 30 minutos).
-        </p>
-        <form v-else @submit.prevent="solicitar" class="space-y-3">
-          <p class="text-sm text-gray-500 text-center">
-            Te enviaremos un enlace al correo de tu cuenta.
-          </p>
-          <input v-model="email" type="email" required placeholder="Email de tu cuenta"
-                 class="w-full border rounded-lg px-3 py-2" />
-          <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <div class="glass-card rounded-3xl p-6 shadow-soft space-y-4">
+        <!-- Paso 2: con token en la URL, definir la contraseña nueva -->
+        <form v-if="token" @submit.prevent="confirmar" class="space-y-4">
+          <p class="font-medium text-on-surface-variant text-center">Escribe tu contraseña nueva.</p>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none">lock_reset</span>
+            <input v-model="password" type="password" required minlength="8" placeholder="Contraseña nueva (mín. 8)"
+                   class="block w-full pl-11 pr-3 py-3 border-2 border-surface-highest rounded-xl bg-surface placeholder-outline font-medium focus:outline-none focus:border-secondary transition-colors duration-200" />
+          </div>
+          <p v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ error }}</p>
           <button :disabled="cargando"
-                  class="w-full bg-violet-600 hover:bg-violet-700 text-white rounded-lg py-2 font-semibold disabled:opacity-50">
-            {{ cargando ? 'Enviando…' : 'Enviar enlace' }}
+                  class="w-full flex justify-center items-center py-3 px-4 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted transition-all duration-200 active:scale-95 disabled:opacity-50">
+            {{ cargando ? 'Guardando…' : 'Guardar contraseña' }}
           </button>
         </form>
-      </template>
 
-      <RouterLink to="/login" class="block w-full text-sm text-violet-600 hover:underline text-center">
-        Volver al inicio de sesión
-      </RouterLink>
+        <!-- Paso 1: pedir el enlace por email -->
+        <template v-else>
+          <p v-if="enviado" class="text-sm font-semibold text-on-secondary-container bg-secondary-fixed rounded-xl px-3 py-2 text-center">
+            Si el correo existe, te enviamos un enlace para crear una contraseña nueva.
+            Revisa tu bandeja (vence en 30 minutos).
+          </p>
+          <form v-else @submit.prevent="solicitar" class="space-y-4">
+            <p class="font-medium text-on-surface-variant text-center">
+              Te enviaremos un enlace al correo de tu cuenta.
+            </p>
+            <div class="relative">
+              <span class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none">mail</span>
+              <input v-model="email" type="email" required placeholder="Email de tu cuenta"
+                     class="block w-full pl-11 pr-3 py-3 border-2 border-surface-highest rounded-xl bg-surface placeholder-outline font-medium focus:outline-none focus:border-secondary transition-colors duration-200" />
+            </div>
+            <p v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ error }}</p>
+            <button :disabled="cargando"
+                    class="w-full flex justify-center items-center py-3 px-4 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted transition-all duration-200 active:scale-95 disabled:opacity-50">
+              {{ cargando ? 'Enviando…' : 'Enviar enlace' }}
+            </button>
+          </form>
+        </template>
+
+        <RouterLink to="/login" class="block w-full font-medium text-primary hover:text-primary-container text-center transition-colors">
+          Volver al inicio de sesión
+        </RouterLink>
+      </div>
     </div>
   </main>
 </template>

@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 
-const baseURL = (import.meta.env.VITE_API_URL || 'http://localhost:8080') + '/api'
+// dev: '' → '/api' relativo (proxy de Vite); prod: VITE_API_URL con el dominio
+const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useClienteAuthStore } from '../stores/clienteAuth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -17,16 +18,21 @@ const router = createRouter({
         { path: 'solicitudes', component: () => import('../views/SolicitudesView.vue') },
         { path: 'servicios', component: () => import('../views/ServiciosView.vue') },
         { path: 'calendario', component: () => import('../views/CalendarioView.vue') },
+        { path: 'configuracion', component: () => import('../views/ConfiguracionView.vue') },
       ],
     },
+    // Área de cliente (apoderado): login propio + directorio de negocios con disponibilidad.
+    // Deben ir ANTES del catch-all /:slug para que "clientes" no se interprete como un slug.
+    { path: '/clientes/entrar', component: () => import('../views/ClienteLoginView.vue') },
+    { path: '/clientes', component: () => import('../views/DirectorioView.vue'), meta: { requiereCliente: true } },
     // Mini-sitio público del negocio (RF-03): reservakids.cl/{slug}
     { path: '/:slug', component: () => import('../views/PublicSiteView.vue') },
   ],
 })
 
 router.beforeEach((to) => {
-  const auth = useAuthStore()
-  if (to.meta.requiereAuth && !auth.autenticado) return '/login'
+  if (to.meta.requiereAuth && !useAuthStore().autenticado) return '/login'
+  if (to.meta.requiereCliente && !useClienteAuthStore().autenticado) return '/clientes/entrar'
 })
 
 export default router
