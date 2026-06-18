@@ -47,19 +47,46 @@ Editar `.env` — **todas** estas son obligatorias en producción:
 ```bash
 POSTGRES_PASSWORD=$(openssl rand -base64 24)   # generar, no inventar
 JWT_SECRET=$(openssl rand -base64 64)          # mínimo 64 bytes
+CRED_ENC_KEY=$(openssl rand -base64 32)        # AES-256: cifra el token de Mercado Pago en reposo (S1)
 CORS_ALLOWED_ORIGINS=https://reservakids.cl
+FRONTEND_URL=https://reservakids.cl            # base de los enlaces de reset de contraseña
+API_URL=https://api.reservakids.cl             # URL PÚBLICA de la API: webhook de Mercado Pago (B1)
 APP_TIMEZONE=America/Santiago
 TRUST_PROXY=true                               # ¡SOLO porque Caddy está delante!
 MAIL_HOST=smtp-relay.brevo.com                 # o smtp.resend.com
 MAIL_PORT=587
 MAIL_USERNAME=<usuario brevo>
 MAIL_PASSWORD=<api key brevo>
+MAIL_SMTP_AUTH=true                            # proveedores reales: auth + STARTTLS
+MAIL_SMTP_STARTTLS=true
 MAIL_FROM=no-reply@reservakids.cl
 ```
 
 > ⚠️ `TRUST_PROXY=true` hace que el rate limit confíe en `X-Forwarded-For`. Solo es seguro
 > detrás de un proxy que controle ese header (Caddy lo hace). Jamás con el puerto 8080
 > expuesto a internet — por eso el paso 4 lo cierra.
+
+> ⚠️ `API_URL` **debe ser la URL pública de la API** (la que Mercado Pago usa como
+> `notificationUrl` del webhook). Si queda en `localhost`, MP no alcanza el webhook y los
+> pagos online nunca se auto-confirman. Asegúrate de que `https://api.reservakids.cl/api/public/webhooks/mercadopago/`
+> sea accesible desde internet (sin auth — el endpoint valida la firma del propio MP).
+
+> 🔐 `CRED_ENC_KEY` cifra el Access Token de Mercado Pago y el secreto del webhook en la BD.
+> **Guárdala fuera de la BD y no la rotes a la ligera:** al cambiarla, las credenciales MP ya
+> cifradas dejan de poder descifrarse y cada negocio deberá volver a pegar su token. Si se
+> omite, se deriva de `JWT_SECRET` (aceptable solo en desarrollo).
+
+### Mercado Pago (por negocio, en el panel del dueño)
+
+Cada negocio configura sus credenciales en **Configuración** del panel; no van en `.env`:
+
+- **Access Token** (Credenciales de Producción de su cuenta MP) — obligatorio para cobrar señas online.
+- **Secreto de firma del webhook** (MP → Tus Integraciones → Webhooks → Firma secreta) — opcional
+  pero recomendado: si se configura, la API valida el header `x-signature` y rechaza con `401`
+  cualquier notificación que no venga firmada por MP (S3). Sin él, la autenticidad se apoya solo
+  en re-consultar el pago a la API de MP.
+
+Ambos valores se guardan **cifrados en reposo** (AES-256-GCM, ver `CRED_ENC_KEY`).
 
 ## 3. Frontend (build estático)
 
