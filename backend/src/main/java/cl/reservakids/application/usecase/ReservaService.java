@@ -254,12 +254,14 @@ public class ReservaService {
             PagoRequest req = new PagoRequest(montoPagado, "MERCADOPAGO", null, Pago.TIPO_ABONO, paymentId);
             registrarPago(tenantId, null, reservaId, req);
 
-            // B3: solo COTIZADA → CONFIRMADA es transición válida. El link de pago únicamente
-            // se genera al cotizar, así que un pago aprobado siempre llega sobre una COTIZADA;
-            // intentar confirmar una PENDIENTE lanzaba TransicionInvalidaException → 500 → MP
-            // reintentaba el webhook para siempre. Otros estados (ya CONFIRMADA, REALIZADA) se
-            // ignoran: el pago igual quedó registrado arriba (idempotente por referencia_externa).
-            if (reserva.getEstado() == EstadoReserva.COTIZADA) {
+            // El pago aprobado confirma tanto la cotización de cumpleaños (COTIZADA) como la
+            // cita por hora (PENDIENTE_PAGO → CONFIRMADA = "pago = agendado"). confirmar() hace
+            // no-op del bloque cuando es null (las citas no usan bloque). Otros estados (ya
+            // CONFIRMADA/REALIZADA) se ignoran: el pago quedó registrado arriba, idempotente.
+            // Confirmar un estado inválido lanzaría TransicionInvalidaException → 500 → MP
+            // reintentaría el webhook para siempre, por eso se acota a estos dos estados.
+            if (reserva.getEstado() == EstadoReserva.COTIZADA
+                    || reserva.getEstado() == EstadoReserva.PENDIENTE_PAGO) {
                 confirmar(tenantId, reservaId);
             } else {
                 log.info("Webhook MP: pago {} registrado en reserva #{} (estado {}); sin transición",
