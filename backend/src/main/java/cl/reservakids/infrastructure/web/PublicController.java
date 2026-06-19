@@ -5,6 +5,7 @@ import cl.reservakids.application.dto.ReservaDtos.ReservaResponse;
 import cl.reservakids.application.dto.ReservaDtos.SolicitudPublicaRequest;
 import cl.reservakids.application.dto.ServicioDtos.ServicioResponse;
 import cl.reservakids.application.usecase.CalendarioService;
+import cl.reservakids.application.usecase.DisponibilidadService;
 import cl.reservakids.application.usecase.ReservaService;
 import cl.reservakids.domain.exception.RecursoNoEncontradoException;
 import cl.reservakids.domain.model.Tenant;
@@ -16,6 +17,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +33,7 @@ public class PublicController {
     private final ServicioRepository servicioRepository;
     private final CalendarioService calendarioService;
     private final ReservaService reservaService;
+    private final DisponibilidadService disponibilidadService;
 
     @GetMapping
     public Map<String, Object> catalogo(@PathVariable String slug) {
@@ -44,6 +48,19 @@ public class PublicController {
     public List<BloqueResponse> disponibilidad(@PathVariable String slug, @RequestParam String mes) {
         Tenant tenant = buscarTenant(slug);
         return calendarioService.listarDisponiblesMes(tenant.getId(), YearMonth.parse(mes));
+    }
+
+    /**
+     * Agendamiento por hora: horas de inicio libres para una fecha, dada la duración total
+     * (suma de los servicios elegidos). Devuelve "HH:mm" ordenadas. Vacío = sin cupo ese día.
+     */
+    @GetMapping("/horas")
+    public List<String> horas(@PathVariable String slug,
+                              @RequestParam String fecha,
+                              @RequestParam int duracion) {
+        Tenant tenant = buscarTenant(slug);
+        return disponibilidadService.horasLibres(tenant.getId(), LocalDate.parse(fecha), duracion)
+                .stream().map(LocalTime::toString).toList();
     }
 
     @PostMapping("/reservas")

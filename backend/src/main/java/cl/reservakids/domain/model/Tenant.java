@@ -37,6 +37,10 @@ public class Tenant {
     @Column(nullable = false)
     private String estado = "ACTIVO";
 
+    /** Granularidad de los slots de agenda en minutos (ej. cada 30 min). */
+    @Column(name = "intervalo_min", nullable = false)
+    private Integer intervaloMin = 30;
+
     @Column(name = "creado_en", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime creadoEn;
 
