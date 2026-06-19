@@ -26,6 +26,7 @@ const router = createRouter({
     { path: '/clientes/entrar', component: () => import('../views/ClienteLoginView.vue') },
     { path: '/clientes', component: () => import('../views/ClienteHomeView.vue'), meta: { requiereCliente: true } },
     { path: '/clientes/negocios', component: () => import('../views/DirectorioView.vue'), meta: { requiereCliente: true } },
+    { path: '/clientes/agendar/:slug', component: () => import('../views/AgendarView.vue'), meta: { requiereCliente: true } },
     // Mini-sitio público del negocio (RF-03): reservakids.cl/{slug}
     { path: '/:slug', component: () => import('../views/PublicSiteView.vue') },
   ],
