@@ -50,6 +50,12 @@ app:
     refresh-days: ${JWT_REFRESH_DAYS:7}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  cookies:
+    # Refresh token en cookie HttpOnly. Secure=true exige HTTPS (prod); en dev (HTTP)
+    # debe ser false o el navegador descarta la cookie.
+    secure: ${COOKIE_SECURE:true}
+    # Lax mitiga CSRF cross-site en POST; Strict rompe links entrantes al área autenticada.
+    same-site: ${COOKIE_SAME_SITE:Lax}
   frontend:
     # Base de los enlaces que viajan por email (reset de contraseña, falla 1.3)
     url: ${FRONTEND_URL:http://localhost:5173}
@@ -68,6 +74,13 @@ app:
     expiracion-horas: ${RESERVA_EXPIRACION_HORAS:48}
     # Falla #1 (2 años): una COTIZADA sin respuesta libera su bloque tras N días
     cotizacion-expiracion-dias: ${COTIZACION_EXPIRACION_DIAS:14}
+  citas:
+    # Cita por hora sin pagar: minutos que retiene la franja antes de liberarla
+    pago-expiracion-min: ${CITA_PAGO_EXPIRACION_MIN:30}
+  whatsapp:
+    # Notificaciones por WhatsApp. false (default) = stub: el mensaje solo se loguea.
+    # Al conectar un proveedor real (Meta Cloud API / Twilio) se pone en true.
+    enabled: ${WHATSAPP_ENABLED:false}
   clientes:
     # Falla #4 (2 años, Ley 21.719): retención de datos personales por inactividad
     retencion-meses: ${RETENCION_CLIENTE_MESES:24}

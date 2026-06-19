@@ -3,6 +3,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
+import BaseModal from '../components/BaseModal.vue'
+import BaseToast from '../components/BaseToast.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -14,7 +16,6 @@ const tabs = [
   { to: '/panel/configuracion', label: 'Configuración', icon: 'settings' },
 ]
 
-// Falla #3 (revisión 2 años): si el email lleva fallos, avisar — antes la degradación era invisible
 const avisoEmail = ref(null)
 onMounted(async () => {
   try {
@@ -24,13 +25,11 @@ onMounted(async () => {
 })
 
 async function salir() {
-  // Fix #6: enviar el refresh token — con el access vencido, el backend revoca por hash
-  try { await api.post('/auth/logout', { refreshToken: auth.refreshToken }) } catch { /* token ya inválido */ }
+  try { await api.post('/auth/logout') } catch { /* token ya inválido */ }
   auth.logoutLocal()
   router.push('/login')
 }
 
-// Falla 3.3 (revisión 5 años): portabilidad — el dueño descarga TODOS sus datos en JSON
 function descargarJson(data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -41,32 +40,42 @@ function descargarJson(data) {
   URL.revokeObjectURL(url)
 }
 
+const toastMensaje = ref('')
+const toastTipo = ref('exito')
+
+// Exportar datos
 async function exportarDatos() {
   try {
     const { data } = await api.get('/tenant/export')
     descargarJson(data)
+    toastMensaje.value = 'Datos exportados correctamente'
+    toastTipo.value = 'exito'
   } catch (e) {
-    // sin esto un fallo del export moría como unhandled rejection, sin feedback
-    alert(e.response?.data?.message || 'No se pudo exportar los datos, intenta de nuevo')
+    toastMensaje.value = e.response?.data?.message || 'No se pudieron exportar los datos'
+    toastTipo.value = 'error'
   }
 }
 
-// Falla 3.3: cierre self-service. El backend exige el slug exacto (anti accidente),
-// rechaza si hay CONFIRMADAS con seña pendiente de resolver, y devuelve el export final.
-async function cerrarNegocio() {
-  const confirmacion = window.prompt(
-    `Esto cancelará tus solicitudes abiertas, ocultará tu página pública y bloqueará el acceso.\n` +
-    `Tus datos se eliminarán definitivamente en 90 días.\n\n` +
-    `Para confirmar, escribe el identificador de tu negocio: ${auth.slug}`)
-  if (confirmacion === null) return
+// Cerrar negocio
+const modalCerrar = ref(false)
+const slugConfirmacion = ref('')
+
+function abrirCerrarNegocio() {
+  slugConfirmacion.value = ''
+  modalCerrar.value = true
+}
+
+async function confirmarCierre() {
   try {
-    const { data } = await api.post('/tenant/cerrar', { slugConfirmacion: confirmacion })
-    descargarJson(data) // última copia garantizada antes de la purga
-    alert('Negocio cerrado. Se descargó una copia de todos tus datos.')
+    const { data } = await api.post('/tenant/cerrar', { slugConfirmacion: slugConfirmacion.value })
+    descargarJson(data)
+    toastMensaje.value = 'Negocio cerrado. Se descargó una copia de todos tus datos.'
+    toastTipo.value = 'exito'
     auth.logoutLocal()
     router.push('/login')
   } catch (e) {
-    alert(e.response?.data?.message || 'No se pudo cerrar el negocio')
+    toastMensaje.value = e.response?.data?.message || 'No se pudo cerrar el negocio'
+    toastTipo.value = 'error'
   }
 }
 </script>
@@ -91,7 +100,7 @@ async function cerrarNegocio() {
         Ver mi página
       </a>
 
-      <nav class="flex-1 space-y-1">
+      <nav class="flex-1 space-y-1" role="navigation" aria-label="Navegación principal">
         <RouterLink v-for="t in tabs" :key="t.to" :to="t.to"
                     class="flex items-center gap-4 text-on-surface-variant px-4 py-3 hover:bg-surface-highest rounded-xl transition-all font-bold text-sm"
                     active-class="!bg-primary-container !text-on-primary-container shadow-sm">
@@ -106,7 +115,7 @@ async function cerrarNegocio() {
           <span class="material-symbols-outlined">download</span>
           Exportar mis datos
         </button>
-        <button @click="cerrarNegocio"
+        <button @click="abrirCerrarNegocio"
                 class="w-full flex items-center gap-4 text-on-surface-variant px-4 py-2.5 hover:bg-error-container hover:text-on-error-container rounded-xl transition-all font-bold text-sm">
           <span class="material-symbols-outlined">door_open</span>
           Cerrar negocio
@@ -151,15 +160,16 @@ async function cerrarNegocio() {
         <RouterView />
       </main>
 
-      <!-- Falla 3.3 (revisión 5 años): offboarding self-service — portabilidad y cierre (móvil) -->
+      <!-- Offboarding (móvil) -->
       <footer class="md:hidden text-center text-xs font-medium text-outline py-3 space-x-2 pb-24">
         <button @click="exportarDatos" class="underline hover:text-primary">Exportar mis datos</button>
         <span>·</span>
-        <button @click="cerrarNegocio" class="underline hover:text-error">Cerrar negocio definitivamente</button>
+        <button @click="abrirCerrarNegocio" class="underline hover:text-error">Cerrar negocio definitivamente</button>
       </footer>
 
       <!-- Bottom nav (móvil) -->
-      <nav class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface-low/95 backdrop-blur-sm border-t border-outline-variant/30 px-2 pt-2 pb-3 flex justify-around">
+      <nav class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface-low/95 backdrop-blur-sm border-t border-outline-variant/30 px-2 pt-2 pb-3 flex justify-around"
+           role="navigation" aria-label="Navegación móvil">
         <RouterLink v-for="t in tabs" :key="t.to" :to="t.to"
                     class="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-2xl text-on-surface-variant transition-all"
                     active-class="!bg-primary-container !text-on-primary-container shadow-sm">
@@ -168,5 +178,26 @@ async function cerrarNegocio() {
         </RouterLink>
       </nav>
     </div>
+
+    <!-- Modal cerrar negocio -->
+    <BaseModal
+      :visible="modalCerrar"
+      titulo="Cerrar negocio"
+      @cerrar="modalCerrar = false"
+      @cancelar="modalCerrar = false"
+      @confirmar="confirmarCierre"
+    >
+      <p class="text-sm font-medium text-on-surface-variant mb-3">
+        Esto cancelará tus solicitudes abiertas, ocultará tu página pública y bloqueará el acceso.
+        Tus datos se eliminarán definitivamente en 90 días.
+      </p>
+      <p class="text-sm font-bold text-on-surface mb-2">
+        Para confirmar, escribe el identificador de tu negocio: <span class="text-primary">{{ auth.slug }}</span>
+      </p>
+      <input v-model="slugConfirmacion" :placeholder="auth.slug"
+             class="w-full border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium text-sm focus:outline-none focus:border-secondary" />
+    </BaseModal>
+
+    <BaseToast :mensaje="toastMensaje" :tipo="toastTipo" @cerrar="toastMensaje = ''" />
   </div>
 </template>

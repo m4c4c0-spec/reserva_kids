@@ -3,6 +3,7 @@ package cl.reservakids.application;
 import cl.reservakids.application.dto.AuthDtos.RefreshRequest;
 import cl.reservakids.application.dto.AuthDtos.ResetConfirmacionRequest;
 import cl.reservakids.application.usecase.AuthService;
+import cl.reservakids.application.usecase.HorarioAtencionService;
 import cl.reservakids.application.usecase.NotificacionPort;
 import cl.reservakids.application.usecase.TokenPort;
 import cl.reservakids.domain.model.PasswordResetToken;
@@ -38,6 +39,7 @@ class AuthServiceTest {
     @Mock UsuarioRepository usuarioRepository;
     @Mock RefreshTokenRepository refreshTokenRepository;
     @Mock PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock HorarioAtencionService horarioAtencionService;
     @Mock PasswordEncoder passwordEncoder;
     @Mock TokenPort tokenPort;
     @Mock NotificacionPort notificacion;

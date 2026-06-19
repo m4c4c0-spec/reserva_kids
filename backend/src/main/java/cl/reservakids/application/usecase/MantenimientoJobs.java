@@ -9,6 +9,7 @@ import cl.reservakids.domain.repository.BloqueDisponibleRepository;
 import cl.reservakids.domain.repository.ClienteRepository;
 import cl.reservakids.domain.repository.PagoRepository;
 import cl.reservakids.domain.repository.PasswordResetTokenRepository;
+import cl.reservakids.domain.repository.RefreshTokenClienteRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.ServicioRepository;
@@ -24,30 +25,19 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.List;
 
 /**
- * Jobs de mantenimiento del ciclo de vida (corren en una sola instancia — ver riesgos 1 año):
- * <ul>
- *   <li>RF-05: una solicitud PENDIENTE retiene su bloque EN_ESPERA por 48 h; vencida se cancela.</li>
- *   <li>Falla #1 (2 años): una COTIZADA sin respuesta libera su bloque tras N días.</li>
- *   <li>Falla #2 (2 años): CONFIRMADA con fecha ya pasada se marca REALIZADA (sin esto los
- *       clientes quedan "con reservas activas" para siempre y la anonimización nunca corre).</li>
- *   <li>Falla #4 (2 años, Ley 21.719): clientes inactivos se anonimizan al vencer la retención.</li>
- *   <li>Falla #11 (2 años): bloques DISPONIBLE pasados sin reservas se eliminan (ruido histórico).</li>
- *   <li>Falla #1 (1 año): purga de refresh tokens revocados/expirados.</li>
- *   <li>Falla 3.3 (5 años): tenants CERRADOS se purgan físicamente tras la ventana de gracia.</li>
- * </ul>
- * Todas las comparaciones con "hoy" usan el {@link Clock} del negocio (APP_TIMEZONE).
+ * Jobs de mantenimiento y cumplimiento (Ley 21.719, limpieza, offboarding).
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ExpiracionService {
+public class MantenimientoJobs {
 
     private final ReservaRepository reservaRepository;
     private final BloqueDisponibleRepository bloqueRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenClienteRepository refreshTokenClienteRepository;
     private final ClienteRepository clienteRepository;
     private final TenantRepository tenantRepository;
     private final PagoRepository pagoRepository;
@@ -56,114 +46,27 @@ public class ExpiracionService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final Clock clock;
 
-    @Value("${app.reservas.expiracion-horas}")
-    private long expiracionHoras;
-
-    @Value("${app.reservas.cotizacion-expiracion-dias}")
-    private long cotizacionExpiracionDias;
-
     @Value("${app.clientes.retencion-meses}")
     private long retencionClienteMeses;
 
     @Value("${app.tenants.purga-dias-tras-cierre}")
     private long purgaDiasTrasCierre;
 
-    /** Minutos que una cita por hora retiene su franja esperando el pago antes de liberarla. */
-    @Value("${app.citas.pago-expiracion-min:30}")
-    private long citaPagoExpiracionMin;
-
     /**
-     * Cita por hora creada pero no pagada: tras N minutos se cancela y la franja vuelve a estar
-     * libre (la ocupación solo cuenta PENDIENTE_PAGO/CONFIRMADA, así que cancelarla la libera).
-     * Sin esto, un cliente que abandona el checkout dejaría la hora bloqueada para siempre.
-     */
-    @Scheduled(fixedDelayString = "PT5M", initialDelayString = "PT3M")
-    @Transactional
-    public void expirarCitasSinPago() {
-        OffsetDateTime limite = OffsetDateTime.now(clock).minusMinutes(citaPagoExpiracionMin);
-        List<Reserva> vencidas = reservaRepository
-                .findByEstadoAndInicioIsNotNullAndCreadaEnBefore(EstadoReserva.PENDIENTE_PAGO, limite);
-
-        for (Reserva reserva : vencidas) {
-            cancelarPorExpiracion(reserva,
-                    "[Expiración] Cita cancelada por falta de pago tras %d min.".formatted(citaPagoExpiracionMin));
-        }
-        if (!vencidas.isEmpty()) {
-            log.info("Job de expiración: {} citas sin pago canceladas", vencidas.size());
-        }
-    }
-
-    /** Corre cada 15 minutos; idempotente, opera sobre todos los tenants. */
-    @Scheduled(fixedDelayString = "PT15M", initialDelayString = "PT1M")
-    @Transactional
-    public void expirarPendientes() {
-        OffsetDateTime limite = OffsetDateTime.now(clock).minusHours(expiracionHoras);
-        List<Reserva> vencidas = reservaRepository
-                .findByEstadoAndCreadaEnBefore(EstadoReserva.PENDIENTE, limite);
-
-        for (Reserva reserva : vencidas) {
-            cancelarPorExpiracion(reserva,
-                    "[Expiración] Cancelada automáticamente tras %d h sin cotización.".formatted(expiracionHoras));
-        }
-        if (!vencidas.isEmpty()) {
-            log.info("Job de expiración: {} solicitudes pendientes canceladas", vencidas.size());
-        }
-    }
-
-    /**
-     * Falla #1 (revisión a 2 años): una COTIZADA cuyo cliente desapareció retenía su bloque
-     * EN_ESPERA para siempre — sábados "ocupados" por cotizaciones fantasma de hace meses.
-     * Pasados N días sin confirmación, se cancela y el bloque vuelve a la venta.
-     */
-    @Scheduled(fixedDelayString = "PT1H", initialDelayString = "PT2M")
-    @Transactional
-    public void expirarCotizadas() {
-        OffsetDateTime limite = OffsetDateTime.now(clock).minusDays(cotizacionExpiracionDias);
-        List<Reserva> vencidas = reservaRepository
-                .findByEstadoAndCotizadaEnBefore(EstadoReserva.COTIZADA, limite);
-
-        for (Reserva reserva : vencidas) {
-            cancelarPorExpiracion(reserva,
-                    "[Expiración] Cotización sin respuesta tras %d días.".formatted(cotizacionExpiracionDias));
-        }
-        if (!vencidas.isEmpty()) {
-            log.info("Job de expiración: {} cotizaciones sin respuesta canceladas", vencidas.size());
-        }
-    }
-
-    /**
-     * Falla #2 (revisión a 2 años): el estado REALIZADA era inalcanzable — toda fiesta concretada
-     * quedaba CONFIRMADA (es decir, "activa") para siempre, bloqueando la anonimización del
-     * cliente y ensuciando los reportes. Barrido diario: confirmadas con fecha ya pasada.
-     */
-    @Scheduled(cron = "0 15 4 * * *")
-    @Transactional
-    public void realizarConcluidas() {
-        LocalDate hoy = LocalDate.now(clock);
-        List<Reserva> concluidas = reservaRepository
-                .findByEstadoConBloqueAnterior(EstadoReserva.CONFIRMADA, hoy);
-
-        for (Reserva reserva : concluidas) {
-            reserva.transicionarA(EstadoReserva.REALIZADA);
-        }
-        if (!concluidas.isEmpty()) {
-            log.info("Job de cierre: {} reservas confirmadas marcadas REALIZADA", concluidas.size());
-        }
-    }
-
-    /**
-     * Mantenimiento diario (04:30): purga refresh tokens revocados/expirados y tokens
-     * de reset de contraseña usados/vencidos (falla 1.3) — ninguna tabla crece sin límite.
+     * Mantenimiento diario (04:30): purga refresh tokens revocados/expirados (dueños y
+     * clientes) y tokens de reset de contraseña usados/vencidos (falla 1.3) — ninguna
+     * tabla crece sin límite.
      */
     @Scheduled(cron = "0 30 4 * * *")
     @Transactional
     public void purgarRefreshTokens() {
         OffsetDateTime ahora = OffsetDateTime.now(clock);
         int eliminados = refreshTokenRepository.purgarInvalidos(ahora);
+        int clientes = refreshTokenClienteRepository.purgarInvalidos(ahora);
         int resets = passwordResetTokenRepository.purgarInvalidos(ahora);
-        if (eliminados > 0 || resets > 0) {
-            log.info("Mantenimiento: {} refresh tokens y {} tokens de reset purgados",
-                    eliminados, resets);
+        if (eliminados > 0 || clientes > 0 || resets > 0) {
+            log.info("Mantenimiento: {} refresh tokens dueños, {} refresh tokens clientes y {} tokens de reset purgados",
+                    eliminados, clientes, resets);
         }
     }
 
@@ -172,7 +75,7 @@ public class ExpiracionService {
      * de la retención configurada se anonimizan (la fila se conserva: las reservas históricas
      * la referencian, pero deja de contener datos personales). Mensual, día 1 a las 05:00.
      * Un cliente con reservas activas todavía no es candidato — por eso depende del barrido
-     * de {@link #realizarConcluidas()}.
+     * de {@link CicloReservaJobs#realizarConcluidas()}.
      */
     @Scheduled(cron = "0 0 5 1 * *")
     @Transactional
@@ -238,14 +141,5 @@ public class ExpiracionService {
             log.info("Offboarding: tenant '{}' (#{}) purgado físicamente ({} días tras su cierre)",
                     tenant.getSlug(), id, purgaDiasTrasCierre);
         }
-    }
-
-    private void cancelarPorExpiracion(Reserva reserva, String nota) {
-        reserva.transicionarA(EstadoReserva.CANCELADA);
-        String previos = reserva.getComentarios() == null ? "" : reserva.getComentarios() + "\n";
-        reserva.setComentarios(previos + nota);
-        bloqueRepository.transicionarEstado(reserva.getBloqueId(), reserva.getTenantId(),
-                EstadoBloque.EN_ESPERA, EstadoBloque.DISPONIBLE);
-        log.info("Reserva #{} expirada; bloque {} liberado", reserva.getId(), reserva.getBloqueId());
     }
 }

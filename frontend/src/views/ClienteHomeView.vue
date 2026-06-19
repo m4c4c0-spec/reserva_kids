@@ -3,11 +3,12 @@ import { useRouter } from 'vue-router'
 import { useClienteAuthStore } from '../stores/clienteAuth'
 import bgV2 from '../assets/login-bg-v2.webp'
 import charHat from '../assets/char-hat.png'
+import BaseButton from '../components/BaseButton.vue'
+import GlassCard from '../components/GlassCard.vue'
 
 const router = useRouter()
 const auth = useClienteAuthStore()
 
-// Primer nombre para un saludo más cercano (el resto del nombre se omite).
 const primerNombre = (auth.nombre || '').trim().split(/\s+/)[0] || ''
 
 function salir() {
@@ -28,9 +29,9 @@ function salir() {
       </header>
 
       <section class="text-center">
-        <img :src="charHat" alt="" class="w-28 h-28 object-contain mx-auto drop-shadow-xl character-img animate-floating" />
+        <img :src="charHat" alt="" class="w-28 h-28 object-contain mx-auto drop-shadow-xl character-img animate-floating" aria-hidden="true" />
         <h1 class="font-display font-extrabold text-3xl md:text-4xl text-primary tracking-tight mt-2">
-          ¡Hola{{ primerNombre ? `, ${primerNombre}` : '' }}! 👋
+          ¡Hola{{ primerNombre ? `, ${primerNombre}` : '' }}!
         </h1>
         <p class="text-on-surface-variant font-medium mt-2 max-w-md mx-auto">
           Bienvenido. Elige un negocio, arma tu combo de servicios y agenda el día y la hora que
@@ -38,16 +39,15 @@ function salir() {
         </p>
       </section>
 
-      <div class="glass-card rounded-3xl p-6 shadow-soft space-y-4">
-        <button @click="router.push('/clientes/negocios')"
-                class="w-full flex justify-center items-center py-4 px-4 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-container transition-all duration-200 active:scale-95">
+      <GlassCard class="space-y-4">
+        <BaseButton variante="primario" @click="router.push('/clientes/negocios')" class="w-full py-4">
           <span class="material-symbols-outlined mr-2">event_available</span>
           Agendar una hora
-        </button>
+        </BaseButton>
         <p class="text-center text-sm font-medium text-on-surface-variant">
           Verás solo los negocios con horarios disponibles.
         </p>
-      </div>
+      </GlassCard>
     </div>
   </main>
 </template>
