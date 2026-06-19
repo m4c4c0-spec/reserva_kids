@@ -11,6 +11,7 @@ export const useClienteAuthStore = defineStore('clienteAuth', {
     accessToken: sessionStorage.getItem('rk_cli_access') || null,
     email: sessionStorage.getItem('rk_cli_email') || null,
     nombre: sessionStorage.getItem('rk_cli_nombre') || null,
+    telefono: sessionStorage.getItem('rk_cli_telefono') || null,
   }),
   getters: {
     autenticado: (s) => !!s.accessToken,
@@ -20,9 +21,11 @@ export const useClienteAuthStore = defineStore('clienteAuth', {
       this.accessToken = data.accessToken
       this.email = data.email
       this.nombre = data.nombre
+      this.telefono = data.telefono
       sessionStorage.setItem('rk_cli_access', data.accessToken)
       sessionStorage.setItem('rk_cli_email', data.email)
       sessionStorage.setItem('rk_cli_nombre', data.nombre || '')
+      sessionStorage.setItem('rk_cli_telefono', data.telefono || '')
     },
     async login(email, password) {
       const { data } = await axios.post(`${baseURL}/cliente-auth/login`, { email, password })
@@ -33,10 +36,11 @@ export const useClienteAuthStore = defineStore('clienteAuth', {
       this.guardar(data)
     },
     logout() {
-      this.accessToken = this.email = this.nombre = null
+      this.accessToken = this.email = this.nombre = this.telefono = null
       sessionStorage.removeItem('rk_cli_access')
       sessionStorage.removeItem('rk_cli_email')
       sessionStorage.removeItem('rk_cli_nombre')
+      sessionStorage.removeItem('rk_cli_telefono')
     },
   },
 })

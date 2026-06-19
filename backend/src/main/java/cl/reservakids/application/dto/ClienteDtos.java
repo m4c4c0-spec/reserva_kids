@@ -12,13 +12,14 @@ public final class ClienteDtos {
     public record RegistroClienteRequest(
             @NotBlank @Size(max = 120) String nombre,
             @NotBlank @Email @Size(max = 160) String email,
+            @NotBlank @Size(max = 20) String telefono,
             @NotBlank @Size(min = 8, max = 72) String password) {}
 
     public record LoginClienteRequest(
             @NotBlank @Email String email,
             @NotBlank String password) {}
 
-    public record ClienteTokenResponse(String accessToken, String email, String nombre) {}
+    public record ClienteTokenResponse(String accessToken, String email, String nombre, String telefono) {}
 
     /** Tarjeta del directorio: lo mínimo para listar y enlazar a /{slug}. */
     public record NegocioResumen(String slug, String nombre) {}

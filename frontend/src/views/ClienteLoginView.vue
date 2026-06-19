@@ -12,6 +12,7 @@ const auth = useClienteAuthStore()
 const modo = ref('login') // 'login' | 'registro'
 const nombre = ref('')
 const email = ref('')
+const telefono = ref('')
 const password = ref('')
 const error = ref('')
 const cargando = ref(false)
@@ -23,7 +24,12 @@ async function enviar() {
     if (modo.value === 'login') {
       await auth.login(email.value, password.value)
     } else {
-      await auth.registrar({ nombre: nombre.value, email: email.value, password: password.value })
+      await auth.registrar({
+        nombre: nombre.value,
+        email: email.value,
+        telefono: telefono.value,
+        password: password.value,
+      })
     }
     router.push('/clientes')
   } catch (e) {
@@ -44,10 +50,10 @@ async function enviar() {
           <img :src="charHat" alt="" class="w-24 h-24 object-contain drop-shadow-xl character-img animate-floating-delayed" />
         </div>
         <h1 class="font-display font-extrabold text-3xl md:text-4xl tracking-tight text-primary">
-          Reserva tu fiesta 🎉
+          Reserva tu hora 📅
         </h1>
         <p class="text-on-surface-variant font-medium mt-1">
-          {{ modo === 'login' ? 'Entra para ver los negocios disponibles' : 'Crea tu cuenta de cliente' }}
+          {{ modo === 'login' ? 'Entra para agendar tus servicios' : 'Crea tu cuenta para agendar' }}
         </p>
       </div>
 
@@ -69,6 +75,16 @@ async function enviar() {
               <input id="email" v-model="email" type="email" required placeholder="tu@correo.com"
                      class="block w-full pl-11 pr-3 py-3 border-2 border-surface-highest rounded-xl bg-surface placeholder-outline font-medium focus:outline-none focus:border-secondary transition-colors duration-200" />
             </div>
+          </div>
+
+          <div v-if="modo === 'registro'">
+            <label class="block text-sm font-bold text-on-surface mb-1" for="telefono">Celular</label>
+            <div class="relative">
+              <span class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none">smartphone</span>
+              <input id="telefono" v-model="telefono" type="tel" required maxlength="20" placeholder="+56 9 1234 5678"
+                     class="block w-full pl-11 pr-3 py-3 border-2 border-surface-highest rounded-xl bg-surface placeholder-outline font-medium focus:outline-none focus:border-secondary transition-colors duration-200" />
+            </div>
+            <p class="text-xs text-on-surface-variant mt-1">Te confirmamos y recordamos tu hora por WhatsApp.</p>
           </div>
 
           <div>

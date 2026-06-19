@@ -24,7 +24,8 @@ const router = createRouter({
     // Área de cliente (apoderado): login propio + directorio de negocios con disponibilidad.
     // Deben ir ANTES del catch-all /:slug para que "clientes" no se interprete como un slug.
     { path: '/clientes/entrar', component: () => import('../views/ClienteLoginView.vue') },
-    { path: '/clientes', component: () => import('../views/DirectorioView.vue'), meta: { requiereCliente: true } },
+    { path: '/clientes', component: () => import('../views/ClienteHomeView.vue'), meta: { requiereCliente: true } },
+    { path: '/clientes/negocios', component: () => import('../views/DirectorioView.vue'), meta: { requiereCliente: true } },
     // Mini-sitio público del negocio (RF-03): reservakids.cl/{slug}
     { path: '/:slug', component: () => import('../views/PublicSiteView.vue') },
   ],

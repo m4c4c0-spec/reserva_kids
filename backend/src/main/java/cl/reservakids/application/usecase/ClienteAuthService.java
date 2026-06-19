@@ -1,6 +1,7 @@
 package cl.reservakids.application.usecase;
 
 import cl.reservakids.application.dto.ClienteDtos.*;
+import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.CuentaCliente;
 import cl.reservakids.domain.repository.CuentaClienteRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,20 @@ public class ClienteAuthService {
         return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * Reusa la normalización E.164 chilena de {@link Cliente} y valida que sea un celular
+     * plausible (56 + 9 dígitos). Sin esto, un número mal escrito haría fallar el WhatsApp
+     * de confirmación/recordatorio en silencio cuando se conecte el proveedor real.
+     */
+    private static String normalizarTelefono(String raw) {
+        String tel = Cliente.normalizarTelefono(raw);
+        if (tel == null || !tel.matches("56\\d{9}")) {
+            throw new IllegalArgumentException(
+                    "Teléfono inválido: usa un celular chileno, ej. +56 9 1234 5678");
+        }
+        return tel;
+    }
+
     @Transactional
     public ClienteTokenResponse registrar(RegistroClienteRequest req) {
         String email = normalizarEmail(req.email());
@@ -37,6 +52,7 @@ public class ClienteAuthService {
         CuentaCliente cuenta = new CuentaCliente();
         cuenta.setEmail(email);
         cuenta.setNombre(req.nombre());
+        cuenta.setTelefono(normalizarTelefono(req.telefono()));
         cuenta.setPasswordHash(passwordEncoder.encode(req.password()));
         cuenta = cuentaClienteRepository.save(cuenta);
         return tokenResponse(cuenta);
@@ -54,6 +70,6 @@ public class ClienteAuthService {
 
     private ClienteTokenResponse tokenResponse(CuentaCliente cuenta) {
         String token = tokenPort.emitirAccessTokenCliente(cuenta.getId(), cuenta.getEmail());
-        return new ClienteTokenResponse(token, cuenta.getEmail(), cuenta.getNombre());
+        return new ClienteTokenResponse(token, cuenta.getEmail(), cuenta.getNombre(), cuenta.getTelefono());
     }
 }

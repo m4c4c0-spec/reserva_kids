@@ -27,4 +27,7 @@ public class CuentaCliente {
     private String passwordHash;
 
     private String nombre;
+
+    /** Contacto para confirmación/recordatorio de cita (WhatsApp + correo). E.164 chileno sin '+'. */
+    private String telefono;
 }
