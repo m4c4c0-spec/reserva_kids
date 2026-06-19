@@ -32,8 +32,10 @@ public class ReservaService {
     private final BloqueDisponibleRepository bloqueRepository;
     private final ClienteRepository clienteRepository;
     private final ReservaRepository reservaRepository;
+    private final ReservaServicioRepository reservaServicioRepository;
     private final PagoRepository pagoRepository;
     private final NotificacionPort notificacion;
+    private final NotificacionWhatsappPort whatsapp;
     private final PasarelaPagoPort pasarelaPagoPort;
 
     /**
@@ -262,12 +264,28 @@ public class ReservaService {
             // reintentaría el webhook para siempre, por eso se acota a estos dos estados.
             if (reserva.getEstado() == EstadoReserva.COTIZADA
                     || reserva.getEstado() == EstadoReserva.PENDIENTE_PAGO) {
+                boolean esCita = reserva.getInicio() != null; // cita por hora (no cumpleaños)
                 confirmar(tenantId, reservaId);
+                if (esCita) {
+                    notificarCitaConfirmada(reserva);
+                }
             } else {
                 log.info("Webhook MP: pago {} registrado en reserva #{} (estado {}); sin transición",
                         paymentId, reservaId, reserva.getEstado());
             }
         }
+    }
+
+    /** Tras confirmar una cita por hora: avisa al cliente por email y WhatsApp (stub por ahora). */
+    private void notificarCitaConfirmada(Reserva cita) {
+        Tenant tenant = tenantRepository.findById(cita.getTenantId()).orElse(null);
+        Cliente cliente = clienteRepository.findById(cita.getClienteId()).orElse(null);
+        if (tenant == null || cliente == null) {
+            return;
+        }
+        List<ReservaServicio> servicios = reservaServicioRepository.findByReservaIdOrderById(cita.getId());
+        notificacion.citaConfirmada(tenant, cita, cliente, servicios);
+        whatsapp.confirmacionCita(tenant, cita, cliente, servicios);
     }
 
     private Reserva buscar(Long tenantId, Long id) {

@@ -4,6 +4,7 @@ import cl.reservakids.application.dto.ReservaDtos.CotizarRequest;
 import cl.reservakids.application.dto.ReservaDtos.PagoRequest;
 import cl.reservakids.application.dto.ReservaDtos.SolicitudPublicaRequest;
 import cl.reservakids.application.usecase.NotificacionPort;
+import cl.reservakids.application.usecase.NotificacionWhatsappPort;
 import cl.reservakids.application.usecase.ReservaService;
 import cl.reservakids.domain.exception.ConflictoBloqueException;
 import cl.reservakids.domain.exception.RecursoNoEncontradoException;
@@ -16,6 +17,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -30,8 +33,10 @@ class ReservaServiceTest {
     @Mock BloqueDisponibleRepository bloqueRepository;
     @Mock ClienteRepository clienteRepository;
     @Mock ReservaRepository reservaRepository;
+    @Mock ReservaServicioRepository reservaServicioRepository;
     @Mock PagoRepository pagoRepository;
     @Mock NotificacionPort notificacion;
+    @Mock NotificacionWhatsappPort whatsapp;
 
     @InjectMocks ReservaService service;
 
@@ -81,6 +86,34 @@ class ReservaServiceTest {
 
         assertEquals("PENDIENTE", respuesta.estado());
         verify(notificacion).nuevaSolicitud(eq(tenant), any(Reserva.class), any(Cliente.class));
+    }
+
+    @Test
+    void webhookDeCitaAprobadaConfirmaYNotificaPorAmbosCanales() {
+        Reserva cita = new Reserva();
+        cita.setId(50L);
+        cita.setTenantId(1L);
+        cita.setClienteId(30L);
+        cita.setEstado(EstadoReserva.PENDIENTE_PAGO);
+        cita.setInicio(OffsetDateTime.now().plusDays(1)); // inicio != null ⇒ es una cita por hora
+        cita.setFin(cita.getInicio().plusHours(1));
+        Cliente cliente = new Cliente();
+        cliente.setId(30L);
+        cliente.setNombre("Ana");
+        cliente.setTelefono("56911111111");
+        cliente.setEmail("ana@mail.cl");
+
+        when(reservaRepository.findByIdAndTenantId(50L, 1L)).thenReturn(Optional.of(cita));
+        when(pagoRepository.existsByReferenciaExterna("pay-1")).thenReturn(false);
+        when(tenantRepository.findById(1L)).thenReturn(Optional.of(tenant));
+        when(clienteRepository.findById(30L)).thenReturn(Optional.of(cliente));
+        when(reservaServicioRepository.findByReservaIdOrderById(50L)).thenReturn(List.of());
+
+        service.procesarWebhookPago(1L, 50L, "pay-1", 12000, "approved");
+
+        assertEquals(EstadoReserva.CONFIRMADA, cita.getEstado());
+        verify(notificacion).citaConfirmada(eq(tenant), eq(cita), eq(cliente), anyList());
+        verify(whatsapp).confirmacionCita(eq(tenant), eq(cita), eq(cliente), anyList());
     }
 
     @Test

@@ -1,18 +1,19 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import axios from 'axios'
+import * as negocioService from '../services/negocioService'
+import { clp } from '../composables/useCurrency'
 import { useClienteAuthStore } from '../stores/clienteAuth'
-// Diseño Festive: fondo pastel + personajes 3D (mismos assets del login/panel)
 import bgV2 from '../assets/login-bg-v2.webp'
 import charBalloon from '../assets/char-balloon.png'
 import charCake from '../assets/char-cake.png'
+import BaseButton from '../components/BaseButton.vue'
+import ErrorBanner from '../components/ErrorBanner.vue'
+import LoadingSpinner from '../components/LoadingSpinner.vue'
 
 const route = useRoute()
 const slug = route.params.slug
 const clienteAuth = useClienteAuthStore()
-// dev: '' → '/api' relativo (proxy de Vite); prod: VITE_API_URL con el dominio
-const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
 
 const negocio = ref(null)
 const noExiste = ref(false)
@@ -21,76 +22,71 @@ const hoy = new Date()
 const mes = ref(`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`)
 
 const seleccion = ref({ servicioId: null, bloqueId: null })
-// aceptaDatos: consentimiento expreso Ley 21.719 — el backend lo exige (@AssertTrue)
 const form = ref({ nombreContacto: '', telefono: '', email: '', numNinos: null, comuna: '', comentarios: '', aceptaDatos: false })
 const enviando = ref(false)
 const error = ref('')
 const exito = ref(null)
+const cargando = ref(true)
 
 async function cargarNegocio() {
   try {
-    const { data } = await axios.get(`${baseURL}/public/${slug}`)
-    negocio.value = data
+    negocio.value = await negocioService.catalogo(slug)
   } catch {
     noExiste.value = true
   }
 }
 
 async function cargarDisponibilidad() {
-  const { data } = await axios.get(`${baseURL}/public/${slug}/disponibilidad`, { params: { mes: mes.value } })
-  bloques.value = data
+  bloques.value = await negocioService.disponibilidad(slug, mes.value)
 }
 
 async function enviar() {
   error.value = ''
   enviando.value = true
   try {
-    const { data } = await axios.post(`${baseURL}/public/${slug}/reservas`, {
+    const data = await negocioService.crearSolicitud(slug, {
       ...seleccion.value,
       ...form.value,
-      // v-model.number deja '' si el campo queda vacío y Jackson rechaza "" como
-      // Integer → 400 confuso para el cliente; el backend espera null
       numNinos: form.value.numNinos || null,
       email: form.value.email || null,
     })
     exito.value = data
   } catch (e) {
     error.value = e.response?.data?.message || 'No se pudo enviar la solicitud'
-    if (e.response?.status === 409) await cargarDisponibilidad() // el bloque ya fue tomado
+    if (e.response?.status === 409) await cargarDisponibilidad()
   } finally {
     enviando.value = false
   }
 }
 
-const clp = (n) => n?.toLocaleString('es-CL', { style: 'currency', currency: 'CLP' })
-
 onMounted(async () => {
-  // Si el cliente inició sesión, prellenamos su nombre/email (editable; el teléfono
-  // no lo tiene la cuenta, lo escribe igual). Si entra anónimo, el formulario va vacío.
   if (clienteAuth.autenticado) {
     form.value.nombreContacto = clienteAuth.nombre || ''
     form.value.email = clienteAuth.email || ''
   }
   await cargarNegocio()
   if (negocio.value) await cargarDisponibilidad()
+  cargando.value = false
 })
 </script>
 
 <template>
   <main class="min-h-screen bg-surface bg-cover bg-center bg-fixed"
         :style="{ backgroundImage: `url(${bgV2})` }">
-    <div v-if="noExiste" class="min-h-screen flex flex-col items-center justify-center p-10 text-center">
-      <img :src="charBalloon" alt="" class="w-32 h-32 object-contain drop-shadow-xl character-img animate-floating" />
-      <p class="mt-4 font-display font-bold text-2xl text-on-surface">Negocio no encontrado 😕</p>
+    <LoadingSpinner v-if="cargando" />
+
+    <div v-else-if="noExiste" class="min-h-screen flex flex-col items-center justify-center p-10 text-center">
+      <img :src="charBalloon" alt="" class="w-32 h-32 object-contain drop-shadow-xl character-img animate-floating" aria-hidden="true" />
+      <p class="mt-4 font-display font-bold text-2xl text-on-surface">Negocio no encontrado</p>
     </div>
 
     <div v-else-if="negocio" class="max-w-2xl mx-auto p-5 space-y-6">
       <header class="text-center pt-8 pb-2 relative">
         <div class="flex justify-center mb-2 h-28">
-          <img :src="charBalloon" alt="" class="w-28 h-28 object-contain drop-shadow-xl character-img animate-floating" />
+          <img :src="charBalloon" alt="" class="w-28 h-28 object-contain drop-shadow-xl character-img animate-floating" aria-hidden="true" />
         </div>
         <h1 class="font-display font-extrabold text-3xl md:text-4xl tracking-tight text-primary">{{ negocio.nombre }}</h1>
-        <p class="font-medium text-on-surface-variant mt-1">Cotiza y reserva tu cumpleaños en minutos 🎉</p>
+        <p class="font-medium text-on-surface-variant mt-1">Cotiza y reserva tu cumpleaños en minutos</p>
       </header>
 
       <!-- Mensaje de retorno Mercado Pago -->
@@ -106,7 +102,7 @@ onMounted(async () => {
 
       <!-- éxito -->
       <div v-if="exito" class="glass-card rounded-3xl shadow-lifted p-8 text-center space-y-3 relative overflow-hidden">
-        <img :src="charCake" alt="" class="w-24 h-24 object-contain mx-auto drop-shadow-xl character-img animate-floating" />
+        <img :src="charCake" alt="" class="w-24 h-24 object-contain mx-auto drop-shadow-xl character-img animate-floating" aria-hidden="true" />
         <h2 class="font-display font-extrabold text-2xl text-primary">¡Solicitud #{{ exito.id }} enviada!</h2>
         <p class="font-medium text-on-surface-variant text-sm">
           El negocio recibió tu solicitud y te contactará pronto con la cotización.
@@ -115,7 +111,7 @@ onMounted(async () => {
       </div>
 
       <template v-else>
-        <!-- 1. Catálogo (RF-03) -->
+        <!-- 1. Catálogo -->
         <section class="space-y-3">
           <h2 class="font-display font-bold text-lg flex items-center gap-2 text-on-surface">
             <span class="w-7 h-7 rounded-full bg-primary-container text-on-primary-container text-sm font-bold flex items-center justify-center shrink-0">1</span>
@@ -140,7 +136,7 @@ onMounted(async () => {
           </ul>
         </section>
 
-        <!-- 2. Fecha (RF-04) -->
+        <!-- 2. Fecha -->
         <section class="space-y-3">
           <div class="flex items-center justify-between gap-2">
             <h2 class="font-display font-bold text-lg flex items-center gap-2 text-on-surface">
@@ -151,7 +147,7 @@ onMounted(async () => {
                    class="bg-surface-high rounded-full px-4 py-2 text-sm font-bold text-on-surface border-none focus:outline-none focus:ring-2 focus:ring-primary-container cursor-pointer" />
           </div>
           <p v-if="!bloques.length" class="font-medium text-on-surface-variant text-sm bg-surface-container rounded-2xl px-4 py-6 text-center">
-            🗓️ Sin horarios disponibles este mes — prueba el siguiente.
+            Sin horarios disponibles este mes — prueba el siguiente.
           </p>
           <div class="flex flex-wrap gap-2">
             <button v-for="b in bloques" :key="b.id" @click="seleccion.bloqueId = b.id"
@@ -164,7 +160,7 @@ onMounted(async () => {
           </div>
         </section>
 
-        <!-- 3. Formulario (RF-05) -->
+        <!-- 3. Formulario -->
         <section v-if="seleccion.servicioId && seleccion.bloqueId" class="space-y-3">
           <h2 class="font-display font-bold text-lg flex items-center gap-2 text-on-surface">
             <span class="w-7 h-7 rounded-full bg-primary-container text-on-primary-container text-sm font-bold flex items-center justify-center shrink-0">3</span>
@@ -189,23 +185,21 @@ onMounted(async () => {
             <textarea v-model="form.comentarios" maxlength="2000" rows="3"
                       placeholder="Comentarios (tema del cumpleaños, dirección, etc.)"
                       class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors sm:col-span-2"></textarea>
-            <!-- Ley 21.719: consentimiento expreso del titular (falla #4, revisión 2 años) -->
             <label class="flex items-start gap-2 text-xs font-medium text-on-surface-variant sm:col-span-2">
               <input v-model="form.aceptaDatos" type="checkbox" required class="mt-0.5 w-4 h-4 accent-[#b5007d]" />
               <span>Autorizo al negocio a usar mis datos de contacto para gestionar esta solicitud
                 (Ley 21.719). Puedes pedir su eliminación cuando quieras.</span>
             </label>
-            <p v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2 sm:col-span-2">{{ error }}</p>
-            <button :disabled="enviando"
-                    class="sm:col-span-2 bg-primary-container text-on-primary-container rounded-full py-3 font-bold shadow-md hover:bg-primary-fixed hover:shadow-lifted active:scale-95 transition-all disabled:opacity-50">
-              {{ enviando ? 'Enviando…' : 'Solicitar cotización 🎉' }}
-            </button>
+            <ErrorBanner :mensaje="error" class="sm:col-span-2" />
+            <BaseButton variante="primario" type="submit" :cargando="enviando" :deshabilitado="enviando" class="sm:col-span-2 py-3">
+              {{ enviando ? 'Enviando…' : 'Solicitar cotización' }}
+            </BaseButton>
           </form>
         </section>
       </template>
 
       <footer class="text-center text-xs font-medium text-outline pt-2 pb-8">
-        Hecho con 🎈 en ReservaKids
+        Hecho con ReservaKids
       </footer>
     </div>
   </main>

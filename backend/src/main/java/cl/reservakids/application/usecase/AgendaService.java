@@ -65,6 +65,10 @@ public class AgendaService {
         int duracionTotal = servicios.stream().mapToInt(Servicio::getDuracionMin).sum();
         int total = servicios.stream().mapToInt(Servicio::getPrecioClp).sum();
 
+        // V15: advisory lock por (tenant, fecha) para evitar doble reserva concurrente.
+        // La transacción de @Transactional mantiene el lock hasta el COMMIT.
+        reservaRepository.bloquearDia(tenant.getId(), req.fecha());
+
         // La hora debe seguir libre (otro cliente pudo tomarla mientras tanto).
         if (!disponibilidadService.horasLibres(tenant.getId(), req.fecha(), duracionTotal).contains(req.hora())) {
             throw new ConflictoBloqueException("Esa hora ya no está disponible, elige otra");

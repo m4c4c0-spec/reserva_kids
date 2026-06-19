@@ -24,6 +24,8 @@ const router = createRouter({
     // Área de cliente (apoderado): login propio + directorio de negocios con disponibilidad.
     // Deben ir ANTES del catch-all /:slug para que "clientes" no se interprete como un slug.
     { path: '/clientes/entrar', component: () => import('../views/ClienteLoginView.vue') },
+    // Falla 1.3 (5 años): página legal de privacidad — también en SLUGS_RESERVADOS del backend
+    { path: '/privacidad', component: () => import('../views/PrivacidadView.vue') },
     { path: '/clientes', component: () => import('../views/ClienteHomeView.vue'), meta: { requiereCliente: true } },
     { path: '/clientes/negocios', component: () => import('../views/DirectorioView.vue'), meta: { requiereCliente: true } },
     { path: '/clientes/agendar/:slug', component: () => import('../views/AgendarView.vue'), meta: { requiereCliente: true } },

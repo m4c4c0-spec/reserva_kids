@@ -1,8 +1,10 @@
 package cl.reservakids.infrastructure.adapter;
 
+import cl.reservakids.application.usecase.CitaTexto;
 import cl.reservakids.application.usecase.NotificacionPort;
 import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.Reserva;
+import cl.reservakids.domain.model.ReservaServicio;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.model.Usuario;
 import cl.reservakids.domain.repository.UsuarioRepository;
@@ -19,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -90,6 +93,11 @@ public class NotificacionAdapter implements NotificacionPort {
     @Override
     public void nuevaSolicitud(Tenant tenant, Reserva reserva, Cliente cliente) {
         ejecutarTrasCommit(() -> enviar(tenant, reserva, cliente));
+    }
+
+    @Override
+    public void citaConfirmada(Tenant tenant, Reserva cita, Cliente cliente, List<ReservaServicio> servicios) {
+        ejecutarTrasCommit(() -> enviarCitaConfirmada(tenant, cita, cliente, servicios));
     }
 
     /**
@@ -194,6 +202,44 @@ public class NotificacionAdapter implements NotificacionPort {
             ultimoFalloEn = OffsetDateTime.now();
             log.error("Fallo enviando email de solicitud #{} ({} consecutivos): {}",
                     reserva.getId(), fallosConsecutivos.get(), e.getMessage());
+        }
+    }
+
+    private void enviarCitaConfirmada(Tenant tenant, Reserva cita, Cliente cliente, List<ReservaServicio> servicios) {
+        try {
+            String destino = cliente.isAnonimizado() ? null : cliente.getEmail();
+            JavaMailSender sender = senderConfigurado();
+            if (sender == null || destino == null) {
+                log.info("Cita #{} confirmada en '{}' para {} el {} [email no configurado, solo log]",
+                        cita.getId(), tenant.getSlug(), cliente.getNombre(), CitaTexto.fechaHora(cita));
+                return;
+            }
+            SimpleMailMessage mensaje = new SimpleMailMessage();
+            mensaje.setFrom(remitente);
+            mensaje.setTo(destino);
+            mensaje.setSubject("✅ Cita confirmada en %s — %s"
+                    .formatted(tenant.getNombre(), CitaTexto.fechaHora(cita)));
+            mensaje.setText("""
+                    ¡Hola %s! Tu pago fue aprobado y tu hora quedó agendada. ✅
+
+                    %s
+                    %sTotal pagado: %s
+
+                    Te enviaremos un recordatorio antes de tu cita. ¡Te esperamos!
+                    """.formatted(
+                    cliente.getNombre(),
+                    CitaTexto.fechaHora(cita),
+                    CitaTexto.listaServicios(servicios),
+                    CitaTexto.clp(CitaTexto.total(servicios))));
+            sender.send(mensaje);
+            fallosConsecutivos.set(0);
+            log.info("Email de cita confirmada #{} enviado a {}", cita.getId(), destino);
+        } catch (Exception e) {
+            fallosConsecutivos.incrementAndGet();
+            ultimoError = e.getMessage();
+            ultimoFalloEn = OffsetDateTime.now();
+            log.error("Fallo enviando confirmación de cita #{} ({} consecutivos): {}",
+                    cita.getId(), fallosConsecutivos.get(), e.getMessage());
         }
     }
 

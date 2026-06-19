@@ -5,11 +5,13 @@ import { useClienteAuthStore } from '../stores/clienteAuth'
 import bgV2 from '../assets/login-bg-v2.webp'
 import charBalloon from '../assets/char-balloon.png'
 import charHat from '../assets/char-hat.png'
+import BaseButton from '../components/BaseButton.vue'
+import ErrorBanner from '../components/ErrorBanner.vue'
 
 const router = useRouter()
 const auth = useClienteAuthStore()
 
-const modo = ref('login') // 'login' | 'registro'
+const modo = ref('login')
 const nombre = ref('')
 const email = ref('')
 const telefono = ref('')
@@ -46,11 +48,11 @@ async function enviar() {
     <div class="w-full max-w-md relative z-10">
       <div class="text-center mb-8">
         <div class="flex justify-center items-end mb-4 gap-3 h-28">
-          <img :src="charBalloon" alt="" class="w-24 h-24 object-contain drop-shadow-xl character-img animate-floating" />
-          <img :src="charHat" alt="" class="w-24 h-24 object-contain drop-shadow-xl character-img animate-floating-delayed" />
+          <img :src="charBalloon" alt="" class="w-24 h-24 object-contain drop-shadow-xl character-img animate-floating" aria-hidden="true" />
+          <img :src="charHat" alt="" class="w-24 h-24 object-contain drop-shadow-xl character-img animate-floating-delayed" aria-hidden="true" />
         </div>
         <h1 class="font-display font-extrabold text-3xl md:text-4xl tracking-tight text-primary">
-          Reserva tu hora 📅
+          Reserva tu hora
         </h1>
         <p class="text-on-surface-variant font-medium mt-1">
           {{ modo === 'login' ? 'Entra para agendar tus servicios' : 'Crea tu cuenta para agendar' }}
@@ -96,15 +98,12 @@ async function enviar() {
             </div>
           </div>
 
-          <p v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">
-            {{ error }}
-          </p>
+          <ErrorBanner :mensaje="error" />
 
-          <button :disabled="cargando" type="submit"
-                  class="w-full flex justify-center items-center py-3 px-4 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-container transition-all duration-200 active:scale-95 disabled:opacity-50">
+          <BaseButton variante="primario" type="submit" :cargando="cargando" :deshabilitado="cargando" class="w-full py-3">
             {{ cargando ? 'Enviando…' : modo === 'login' ? 'Iniciar Sesión' : 'Crear cuenta' }}
             <span class="material-symbols-outlined ml-2" style="font-size: 18px">arrow_forward</span>
-          </button>
+          </BaseButton>
         </form>
 
         <div class="mt-6 flex flex-col items-center gap-3">

@@ -1,35 +1,82 @@
 <script setup>
-import { ref } from 'vue'
-import api from '../api/client'
+import { ref, onMounted } from 'vue'
+import * as configuracionService from '../services/configuracionService'
+import BaseButton from '../components/BaseButton.vue'
+import BaseInput from '../components/BaseInput.vue'
+import BaseToast from '../components/BaseToast.vue'
+import ErrorBanner from '../components/ErrorBanner.vue'
+import LoadingSpinner from '../components/LoadingSpinner.vue'
 
 const token = ref('')
-const webhookSecret = ref('') // S3: secreto de firma del webhook (opcional)
-const guardado = ref(false)
-const error = ref('')
+const webhookSecret = ref('')
+const toastMp = ref('')
+const errorMp = ref('')
+
+const diasSemana = [
+  { value: 1, label: 'Lunes' },
+  { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miércoles' },
+  { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' },
+  { value: 6, label: 'Sábado' },
+  { value: 7, label: 'Domingo' },
+]
+const horario = ref({ intervaloMin: 30, franjas: [] })
+const cargandoHorario = ref(true)
+const toastHorario = ref('')
+const errorHorario = ref('')
+
+onMounted(async () => {
+  try {
+    const data = await configuracionService.cargarHorario()
+    horario.value = data
+  } catch (e) {
+    errorHorario.value = e.response?.data?.message || 'No se pudo cargar el horario'
+  } finally {
+    cargandoHorario.value = false
+  }
+})
 
 async function guardarToken() {
+  errorMp.value = ''
   try {
-    error.value = ''
-    await api.put('/tenant/configuracion', {
+    await configuracionService.guardarConfig({
       mpAccessToken: token.value,
-      // se manda solo si el dueño lo escribió: vacío no borra el secreto ya guardado
       mpWebhookSecret: webhookSecret.value || null,
     })
-    guardado.value = true
-    setTimeout(() => { guardado.value = false }, 3000)
+    toastMp.value = 'Token guardado correctamente'
   } catch (e) {
-    error.value = e.response?.data?.message || 'Error al guardar el token'
+    errorMp.value = e.response?.data?.message || 'Error al guardar el token'
+  }
+}
+
+function agregarFranja() {
+  horario.value.franjas.push({ diaSemana: 1, horaApertura: '09:00', horaCierre: '18:00' })
+}
+
+function eliminarFranja(index) {
+  horario.value.franjas.splice(index, 1)
+}
+
+async function guardarHorario() {
+  errorHorario.value = ''
+  try {
+    await configuracionService.guardarHorario(horario.value)
+    toastHorario.value = 'Horario guardado correctamente'
+  } catch (e) {
+    errorHorario.value = e.response?.data?.message || 'Error al guardar el horario'
   }
 }
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-8">
     <div>
       <h2 class="font-display font-bold text-2xl md:text-3xl text-on-surface">Configuración</h2>
       <p class="font-medium text-on-surface-variant text-sm mt-0.5">Ajusta los parámetros técnicos de tu negocio.</p>
     </div>
 
+    <!-- Mercado Pago -->
     <div class="bg-surface-lowest p-6 rounded-3xl shadow-soft border border-outline-variant/20 max-w-2xl">
       <h3 class="font-display font-bold text-on-surface mb-2">Integración con Mercado Pago</h3>
       <p class="font-medium text-on-surface-variant text-sm mb-4">
@@ -41,11 +88,7 @@ async function guardarToken() {
       <form @submit.prevent="guardarToken" class="space-y-4">
         <div>
           <label class="block text-sm font-bold text-on-surface mb-1">Access Token (Producción)</label>
-          <div class="relative">
-            <span class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none">key</span>
-            <input v-model="token" type="password" required placeholder="APP_USR-..."
-                   class="w-full pl-11 pr-3 py-2.5 border-2 border-surface-highest bg-surface rounded-xl text-sm font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors">
-          </div>
+          <BaseInput v-model="token" tipo="password" requerido placeholder="APP_USR-..." icono="key" />
         </div>
 
         <div>
@@ -56,20 +99,69 @@ async function guardarToken() {
             En Mercado Pago: <strong>Tus Integraciones > Webhooks > Firma secreta</strong>.
             Si lo configuras, validamos que las notificaciones de pago vengan realmente de MP.
           </p>
-          <div class="relative">
-            <span class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none">verified_user</span>
-            <input v-model="webhookSecret" type="password" placeholder="Déjalo vacío para no cambiarlo"
-                   class="w-full pl-11 pr-3 py-2.5 border-2 border-surface-highest bg-surface rounded-xl text-sm font-medium placeholder-outline focus:outline-none focus:border-secondary transition-colors">
-          </div>
+          <BaseInput v-model="webhookSecret" tipo="password" placeholder="Déjalo vacío para no cambiarlo" icono="verified_user" />
         </div>
 
-        <div v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ error }}</div>
-        <div v-if="guardado" class="text-sm font-semibold text-green-800 bg-[#dcfce7] rounded-xl px-3 py-2">Token guardado correctamente 🎉</div>
+        <ErrorBanner :mensaje="errorMp" />
+        <BaseToast :mensaje="toastMp" tipo="exito" @cerrar="toastMp = ''" />
 
-        <button type="submit"
-                class="bg-primary-container text-on-primary-container px-5 py-2.5 rounded-full text-sm font-bold shadow-md hover:bg-primary-fixed hover:shadow-lifted active:scale-95 transition-all">
-          Guardar Configuración
-        </button>
+        <BaseButton variante="primario" type="submit">Guardar Configuración</BaseButton>
+      </form>
+    </div>
+
+    <!-- Horario de atención -->
+    <div class="bg-surface-lowest p-6 rounded-3xl shadow-soft border border-outline-variant/20 max-w-2xl">
+      <h3 class="font-display font-bold text-on-surface mb-2">Horario de atención</h3>
+      <p class="font-medium text-on-surface-variant text-sm mb-4">
+        Define cuándo los clientes pueden agendar citas por hora y cada cuántos minutos se ofrecen los slots.
+      </p>
+
+      <LoadingSpinner v-if="cargandoHorario" mensaje="Cargando horario…" />
+      <form v-else @submit.prevent="guardarHorario" class="space-y-4">
+        <div>
+          <label class="block text-sm font-bold text-on-surface mb-1">Intervalo entre horas (minutos)</label>
+          <input v-model.number="horario.intervaloMin" type="number" min="5" max="120" required
+                 class="w-32 px-3 py-2.5 border-2 border-surface-highest bg-surface rounded-xl text-sm font-medium focus:outline-none focus:border-secondary transition-colors">
+          <p class="text-xs font-medium text-on-surface-variant mt-1">Ej: 30 ofrece horas a las 09:00, 09:30, 10:00…</p>
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="block text-sm font-bold text-on-surface">Franjas semanales</label>
+            <button type="button" @click="agregarFranja"
+                    class="text-sm font-bold text-secondary hover:text-secondary-container flex items-center gap-1">
+              <span class="material-symbols-outlined text-[18px]">add</span> Agregar franja
+            </button>
+          </div>
+
+          <div v-for="(f, i) in horario.franjas" :key="i"
+               class="flex flex-wrap items-end gap-2 bg-surface p-3 rounded-2xl border border-outline-variant/20">
+            <select v-model.number="f.diaSemana" required
+                    class="px-3 py-2 border-2 border-surface-highest bg-surface rounded-xl text-sm font-medium focus:outline-none focus:border-secondary transition-colors">
+              <option v-for="d in diasSemana" :key="d.value" :value="d.value">{{ d.label }}</option>
+            </select>
+            <input v-model="f.horaApertura" type="time" required
+                   class="px-3 py-2 border-2 border-surface-highest bg-surface rounded-xl text-sm font-medium focus:outline-none focus:border-secondary transition-colors">
+            <span class="text-on-surface-variant font-bold">a</span>
+            <input v-model="f.horaCierre" type="time" required
+                   class="px-3 py-2 border-2 border-surface-highest bg-surface rounded-xl text-sm font-medium focus:outline-none focus:border-secondary transition-colors">
+            <button type="button" @click="eliminarFranja(i)"
+                    class="text-error hover:bg-error-container rounded-full w-8 h-8 flex items-center justify-center transition-colors">
+              <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
+
+          <p v-if="!horario.franjas.length" class="text-sm font-medium text-on-surface-variant bg-surface-container rounded-xl px-4 py-3">
+            Sin franjas configuradas. Agrega al menos una para que aparezcas en el directorio de clientes.
+          </p>
+        </div>
+
+        <ErrorBanner :mensaje="errorHorario" />
+        <BaseToast :mensaje="toastHorario" tipo="exito" @cerrar="toastHorario = ''" />
+
+        <BaseButton variante="primario" type="submit" :deshabilitado="!horario.franjas.length">
+          Guardar Horario
+        </BaseButton>
       </form>
     </div>
   </div>

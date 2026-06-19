@@ -33,6 +33,7 @@ public class AuthService {
     private final UsuarioRepository usuarioRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final HorarioAtencionService horarioAtencionService;
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
     private final NotificacionPort notificacion;
@@ -52,6 +53,7 @@ public class AuthService {
             "login", "panel", "api", "admin", "auth", "www", "app",
             "static", "assets", "public", "docs", "ayuda", "soporte",
             "reset", // falla 1.3: ruta del frontend para recuperar contraseña
+            "privacidad", // página legal de privacidad
             "clientes"); // área de cliente (login + directorio) — no puede ser un slug de negocio
 
     /**
@@ -80,6 +82,10 @@ public class AuthService {
         tenant.setNombre(req.nombreNegocio());
         tenant.setSlug(req.slug());
         tenant = tenantRepository.save(tenant);
+
+        // El agendamiento por hora requiere horario; sin esto el negocio nuevo no
+        // aparecería en el directorio de clientes.
+        horarioAtencionService.crearHorarioPorDefecto(tenant.getId());
 
         Usuario usuario = new Usuario();
         usuario.setTenantId(tenant.getId());

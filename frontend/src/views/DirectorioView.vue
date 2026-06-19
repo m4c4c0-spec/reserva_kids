@@ -1,14 +1,16 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import * as negocioService from '../services/negocioService'
 import { useClienteAuthStore } from '../stores/clienteAuth'
 import bgV2 from '../assets/login-bg-v2.webp'
 import charCake from '../assets/char-cake.png'
+import ErrorBanner from '../components/ErrorBanner.vue'
+import LoadingSpinner from '../components/LoadingSpinner.vue'
+import EmptyState from '../components/EmptyState.vue'
 
 const router = useRouter()
 const auth = useClienteAuthStore()
-const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
 
 const negocios = ref([])
 const cargando = ref(true)
@@ -18,13 +20,9 @@ async function cargar() {
   cargando.value = true
   error.value = ''
   try {
-    const { data } = await axios.get(`${baseURL}/cliente/negocios`, {
-      headers: { Authorization: `Bearer ${auth.accessToken}` },
-    })
-    negocios.value = data
+    negocios.value = await negocioService.listarNegocios()
   } catch (e) {
     if (e.response?.status === 401) {
-      // sesión vencida → de vuelta al login de cliente
       auth.logout()
       router.push('/clientes/entrar')
       return
@@ -35,8 +33,8 @@ async function cargar() {
   }
 }
 
-function salir() {
-  auth.logout()
+async function salir() {
+  await auth.logout()
   router.push('/clientes/entrar')
 }
 
@@ -50,7 +48,7 @@ onMounted(cargar)
       <header class="flex items-center justify-between pt-6">
         <div>
           <h1 class="font-display font-extrabold text-2xl md:text-3xl text-primary tracking-tight">
-            Hola{{ auth.nombre ? `, ${auth.nombre}` : '' }} 👋
+            Hola{{ auth.nombre ? `, ${auth.nombre}` : '' }}
           </h1>
           <p class="font-medium text-on-surface-variant text-sm mt-0.5">Elige un negocio con horarios disponibles</p>
         </div>
@@ -60,9 +58,8 @@ onMounted(cargar)
         </button>
       </header>
 
-      <p v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ error }}</p>
-
-      <p v-if="cargando" class="font-medium text-on-surface-variant text-center py-10">Cargando negocios…</p>
+      <ErrorBanner :mensaje="error" />
+      <LoadingSpinner v-if="cargando" />
 
       <ul v-else-if="negocios.length" class="grid gap-4 sm:grid-cols-2">
         <li v-for="n in negocios" :key="n.slug">
@@ -83,11 +80,13 @@ onMounted(cargar)
         </li>
       </ul>
 
-      <div v-else class="text-center bg-surface-container rounded-3xl px-5 py-10">
-        <img :src="charCake" alt="" class="w-24 h-24 object-contain mx-auto drop-shadow-xl character-img" />
-        <p class="font-display font-bold text-on-surface mt-2">Aún no hay negocios con horarios disponibles</p>
-        <p class="font-medium text-on-surface-variant text-sm mt-1">Vuelve pronto: los negocios publican sus fechas seguido.</p>
-      </div>
+      <EmptyState v-else
+                  mensaje="Aún no hay negocios con horarios disponibles. Vuelve pronto."
+                  icono="storefront">
+        <template #acciones>
+          <img :src="charCake" alt="" class="w-24 h-24 object-contain mt-2 character-img" aria-hidden="true" />
+        </template>
+      </EmptyState>
     </div>
   </main>
 </template>

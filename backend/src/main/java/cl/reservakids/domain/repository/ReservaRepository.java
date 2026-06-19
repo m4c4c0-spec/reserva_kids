@@ -24,17 +24,26 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     List<Reserva> findByEstadoAndCreadaEnBefore(EstadoReserva estado, OffsetDateTime limite);
 
     /**
-     * Ocupación del agendamiento por hora: citas de un negocio que arrancan dentro del rango
-     * y en algún estado dado (PENDIENTE_PAGO/CONFIRMADA). Base para restar horas ya tomadas.
+     * Ocupación del agendamiento por hora: citas de un negocio cuya franja [inicio, fin)
+     * se solapa con [desde, hasta) y en algún estado dado (PENDIENTE_PAGO/CONFIRMADA).
+     * Base para restar horas ya tomadas.
      */
     @Query("""
             SELECT r FROM Reserva r
-            WHERE r.tenantId = :tenantId AND r.inicio >= :desde AND r.inicio < :hasta
+            WHERE r.tenantId = :tenantId AND r.inicio < :hasta AND r.fin > :desde
               AND r.estado IN :estados""")
     List<Reserva> findCitasEntre(@Param("tenantId") Long tenantId,
                                  @Param("desde") OffsetDateTime desde,
                                  @Param("hasta") OffsetDateTime hasta,
                                  @Param("estados") Collection<EstadoReserva> estados);
+
+    /**
+     * V15: advisory lock por (tenant_id, fecha) para serializar agendamientos de un
+     * mismo negocio en un mismo día. Libera automáticamente al COMMIT/ROLLBACK.
+     */
+    @Modifying
+    @Query(value = "SELECT pg_advisory_xact_lock(hashtext(cast(:tenantId AS text) || '-' || cast(:fecha AS text)))", nativeQuery = true)
+    void bloquearDia(@Param("tenantId") Long tenantId, @Param("fecha") LocalDate fecha);
 
     /** Expiración de citas no pagadas (PENDIENTE_PAGO) creadas antes del límite — liberan la hora. */
     List<Reserva> findByEstadoAndInicioIsNotNullAndCreadaEnBefore(EstadoReserva estado, OffsetDateTime limite);

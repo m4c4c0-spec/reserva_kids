@@ -1,26 +1,28 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import * as negocioService from '../services/negocioService'
+import { clp } from '../composables/useCurrency'
+import { duracion } from '../composables/useDuration'
 import { useClienteAuthStore } from '../stores/clienteAuth'
 import bgV2 from '../assets/login-bg-v2.webp'
 import charCake from '../assets/char-cake.png'
+import BaseButton from '../components/BaseButton.vue'
+import ErrorBanner from '../components/ErrorBanner.vue'
+import LoadingSpinner from '../components/LoadingSpinner.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useClienteAuthStore()
 const slug = route.params.slug
-const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
 
 const negocio = ref(null)
 const cargando = ref(true)
 const noExiste = ref(false)
 
-// Paso del wizard: 1 servicios · 2 día y hora · 3 pago (3 llega en la Fase 4).
 const paso = ref(1)
 const pasos = ['Servicios', 'Día y hora', 'Pago']
 
-// Paso 1: selección de servicios (multi).
 const seleccionadas = ref(new Set())
 function alternar(id) {
   const s = new Set(seleccionadas.value)
@@ -35,7 +37,6 @@ const duracionTotalMin = computed(() =>
   serviciosSel.value.reduce((acc, s) => acc + (s.duracionMin || 0), 0)
 )
 
-// Paso 2: día y hora.
 const hoyStr = (() => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -53,27 +54,15 @@ async function cargarHoras() {
   if (!duracionTotalMin.value) return
   cargandoHoras.value = true
   try {
-    const { data } = await axios.get(`${baseURL}/public/${slug}/horas`, {
-      params: { fecha: fecha.value, duracion: duracionTotalMin.value },
-    })
-    horas.value = data
+    horas.value = await negocioService.horas(slug, fecha.value, duracionTotalMin.value)
   } catch {
     errorHoras.value = 'No se pudieron cargar las horas, intenta de nuevo'
   } finally {
     cargandoHoras.value = false
   }
 }
-// Recargar al cambiar de día (solo mientras estamos en el paso 2).
+
 watch(fecha, () => { if (paso.value === 2) cargarHoras() })
-
-const clp = (n) => (n || 0).toLocaleString('es-CL', { style: 'currency', currency: 'CLP' })
-
-function duracion(min) {
-  if (!min) return '—'
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  return [h ? `${h} h` : '', m ? `${m} min` : ''].filter(Boolean).join(' ')
-}
 
 const fechaLarga = computed(() =>
   new Date(`${fecha.value}T00:00:00`).toLocaleDateString('es-CL', {
@@ -94,8 +83,6 @@ function aPago() {
   paso.value = 3
 }
 
-// Paso 3: crea la cita (PENDIENTE_PAGO) y redirige a Mercado Pago. "Pago = agendado":
-// la cita solo se confirma cuando MP aprueba (webhook).
 const agendando = ref(false)
 const errorPago = ref('')
 
@@ -103,12 +90,14 @@ async function pagar() {
   errorPago.value = ''
   agendando.value = true
   try {
-    const { data } = await axios.post(
-      `${baseURL}/cliente/agendar/${slug}`,
-      { servicioIds: [...seleccionadas.value], fecha: fecha.value, hora: horaSel.value },
-      { headers: { Authorization: `Bearer ${auth.accessToken}` } },
-    )
-    window.location.href = data.initPoint // a la pasarela de Mercado Pago
+    // FIX: usa negocioService.agendar() que pasa por clienteClient con interceptor de refresh
+    // en vez de axios directo que saltaba el refresh automático de token
+    const data = await negocioService.agendar(slug, {
+      servicioIds: [...seleccionadas.value],
+      fecha: fecha.value,
+      hora: horaSel.value,
+    })
+    window.location.href = data.initPoint
   } catch (e) {
     if (e.response?.status === 401) {
       auth.logout()
@@ -116,7 +105,6 @@ async function pagar() {
       return
     }
     if (e.response?.status === 409) {
-      // otro cliente tomó la hora mientras tanto → de vuelta a elegir hora
       errorPago.value = e.response.data?.message || 'Esa hora ya no está disponible'
       paso.value = 2
       cargarHoras()
@@ -130,8 +118,7 @@ async function pagar() {
 
 onMounted(async () => {
   try {
-    const { data } = await axios.get(`${baseURL}/public/${slug}`)
-    negocio.value = data
+    negocio.value = await negocioService.catalogo(slug)
   } catch {
     noExiste.value = true
   } finally {
@@ -167,10 +154,10 @@ onMounted(async () => {
         </li>
       </ol>
 
-      <p v-if="cargando" class="font-medium text-on-surface-variant text-center py-10">Cargando servicios…</p>
+      <LoadingSpinner v-if="cargando" mensaje="Cargando servicios…" />
 
       <div v-else-if="noExiste" class="text-center bg-surface-container rounded-3xl px-5 py-10">
-        <img :src="charCake" alt="" class="w-24 h-24 object-contain mx-auto drop-shadow-xl character-img" />
+        <img :src="charCake" alt="" class="w-24 h-24 object-contain mx-auto drop-shadow-xl character-img" aria-hidden="true" />
         <p class="font-display font-bold text-on-surface mt-2">Este negocio no está disponible</p>
       </div>
 
@@ -226,8 +213,8 @@ onMounted(async () => {
         </div>
 
         <div>
-          <p v-if="cargandoHoras" class="font-medium text-on-surface-variant text-center py-8">Buscando horas…</p>
-          <p v-else-if="errorHoras" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ errorHoras }}</p>
+          <LoadingSpinner v-if="cargandoHoras" mensaje="Buscando horas…" />
+          <ErrorBanner v-else-if="errorHoras" :mensaje="errorHoras" />
 
           <div v-else-if="horas.length" class="grid grid-cols-3 sm:grid-cols-4 gap-2">
             <button v-for="h in horas" :key="h" type="button" @click="horaSel = h"
@@ -269,18 +256,17 @@ onMounted(async () => {
           </div>
         </div>
 
-        <p v-if="errorPago" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ errorPago }}</p>
+        <ErrorBanner :mensaje="errorPago" />
 
         <div class="flex items-center gap-3">
           <button @click="paso = 2" :disabled="agendando"
                   class="py-3 px-4 rounded-full font-bold text-on-surface-variant hover:text-primary transition-colors disabled:opacity-40">
             Atrás
           </button>
-          <button @click="pagar" :disabled="agendando"
-                  class="flex-1 flex justify-center items-center py-3.5 px-6 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted transition-all active:scale-95 disabled:opacity-50">
+          <BaseButton variante="primario" @click="pagar" :cargando="agendando" :deshabilitado="agendando" class="flex-1 py-3.5">
             <span class="material-symbols-outlined mr-2 text-[20px]">lock</span>
             {{ agendando ? 'Redirigiendo…' : `Pagar ${clp(totalClp)}` }}
-          </button>
+          </BaseButton>
         </div>
       </template>
     </div>
@@ -303,14 +289,12 @@ onMounted(async () => {
                   class="py-3 px-4 rounded-full font-bold text-on-surface-variant hover:text-primary transition-colors">
             Atrás
           </button>
-          <button v-if="paso === 1" @click="aDiaYHora" :disabled="!seleccionadas.size"
-                  class="flex items-center py-3 px-6 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted transition-all active:scale-95 disabled:opacity-40 disabled:active:scale-100">
+          <BaseButton v-if="paso === 1" variante="primario" @click="aDiaYHora" :deshabilitado="!seleccionadas.size" class="py-3 px-6">
             Continuar <span class="material-symbols-outlined ml-1 text-[18px]">arrow_forward</span>
-          </button>
-          <button v-else @click="aPago" :disabled="!horaSel"
-                  class="flex items-center py-3 px-6 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted transition-all active:scale-95 disabled:opacity-40 disabled:active:scale-100">
+          </BaseButton>
+          <BaseButton v-else variante="primario" @click="aPago" :deshabilitado="!horaSel" class="py-3 px-6">
             Ir a pagar <span class="material-symbols-outlined ml-1 text-[18px]">arrow_forward</span>
-          </button>
+          </BaseButton>
         </div>
       </div>
     </footer>
