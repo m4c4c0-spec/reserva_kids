@@ -12,4 +12,7 @@ public interface HorarioAtencionRepository extends JpaRepository<HorarioAtencion
 
     /** Todas las franjas del negocio (para mostrar/editar el horario en el panel del dueño). */
     List<HorarioAtencion> findByTenantIdOrderByDiaSemanaAscHoraAperturaAsc(Long tenantId);
+
+    /** Reemplazo completo del horario semanal. */
+    void deleteByTenantId(Long tenantId);
 }
