@@ -2,8 +2,11 @@ package cl.reservakids.application.usecase;
 
 import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.Reserva;
+import cl.reservakids.domain.model.ReservaServicio;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.model.Usuario;
+
+import java.util.List;
 
 /**
  * Puerto de notificaciones (RF-08). La implementación de infraestructura decide el canal:
@@ -12,6 +15,9 @@ import cl.reservakids.domain.model.Usuario;
 public interface NotificacionPort {
 
     void nuevaSolicitud(Tenant tenant, Reserva reserva, Cliente cliente);
+
+    /** Email al cliente confirmando que su cita por hora quedó agendada (tras el pago). */
+    void citaConfirmada(Tenant tenant, Reserva cita, Cliente cliente, List<ReservaServicio> servicios);
 
     /** Link wa.me pre-armado para que el dueño responda al cliente (RF-08). */
     String linkWhatsApp(Cliente cliente, Reserva reserva);
