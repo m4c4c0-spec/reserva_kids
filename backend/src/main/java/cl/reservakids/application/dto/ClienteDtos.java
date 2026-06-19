@@ -19,7 +19,7 @@ public final class ClienteDtos {
             @NotBlank @Email String email,
             @NotBlank String password) {}
 
-    public record ClienteTokenResponse(String accessToken, String email, String nombre, String telefono) {}
+    public record ClienteTokenResponse(String accessToken, String refreshToken, String email, String nombre, String telefono) {}
 
     /** Tarjeta del directorio: lo mínimo para listar y enlazar a /{slug}. */
     public record NegocioResumen(String slug, String nombre) {}
