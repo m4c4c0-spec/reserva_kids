@@ -53,6 +53,7 @@ public class AuthService {
             "login", "panel", "api", "admin", "auth", "www", "app",
             "static", "assets", "public", "docs", "ayuda", "soporte",
             "reset", // falla 1.3: ruta del frontend para recuperar contraseña
+            "privacidad", // página legal de privacidad
             "clientes"); // área de cliente (login + directorio) — no puede ser un slug de negocio
 
     /**
