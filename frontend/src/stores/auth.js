@@ -3,11 +3,13 @@ import axios from 'axios'
 
 // dev: '' → '/api' relativo (proxy de Vite); prod: VITE_API_URL con el dominio
 const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
+const withCreds = { withCredentials: true }
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
+    // El refresh token NO se guarda aquí: vive en una cookie HttpOnly que el JS no
+    // puede leer (mitigación de robo por XSS). Solo persiste el access token (corto).
     accessToken: sessionStorage.getItem('rk_access') || null,
-    refreshToken: sessionStorage.getItem('rk_refresh') || null,
     slug: sessionStorage.getItem('rk_slug') || null,
     nombreNegocio: sessionStorage.getItem('rk_nombre') || null,
   }),
@@ -17,31 +19,36 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     guardar(tokens) {
       this.accessToken = tokens.accessToken
-      this.refreshToken = tokens.refreshToken
       this.slug = tokens.slug
       this.nombreNegocio = tokens.nombreNegocio
       sessionStorage.setItem('rk_access', tokens.accessToken)
-      sessionStorage.setItem('rk_refresh', tokens.refreshToken)
       sessionStorage.setItem('rk_slug', tokens.slug)
       sessionStorage.setItem('rk_nombre', tokens.nombreNegocio)
     },
     async login(email, password) {
-      const { data } = await axios.post(`${baseURL}/auth/login`, { email, password })
+      // withCredentials envía/recibe la cookie HttpOnly del refresh token.
+      const { data } = await axios.post(`${baseURL}/auth/login`, { email, password }, withCreds)
       this.guardar(data)
     },
     async registrar(payload) {
-      const { data } = await axios.post(`${baseURL}/auth/register`, payload)
+      const { data } = await axios.post(`${baseURL}/auth/register`, payload, withCreds)
       this.guardar(data)
     },
     async refresh() {
-      const { data } = await axios.post(`${baseURL}/auth/refresh`, {
-        refreshToken: this.refreshToken,
-      })
+      // Sin body y sin el interceptor del api: el refresh token va en la cookie HttpOnly
+      // (withCredentials). Usar axios directo evita un loop si el refresh responde 401.
+      const { data } = await axios.post(`${baseURL}/auth/refresh`, null, withCreds)
       this.guardar(data)
     },
+    async logout() {
+      try { await axios.post(`${baseURL}/auth/logout`, null, withCreds) } catch { /* token ya inválido */ }
+      this.logoutLocal()
+    },
     logoutLocal() {
-      this.accessToken = this.refreshToken = this.slug = this.nombreNegocio = null
-      sessionStorage.clear()
+      this.accessToken = this.slug = this.nombreNegocio = null
+      sessionStorage.removeItem('rk_access')
+      sessionStorage.removeItem('rk_slug')
+      sessionStorage.removeItem('rk_nombre')
     },
   },
 })
