@@ -1,13 +1,12 @@
 <script setup>
-// Falla 1.3 (revisión 5 años): recuperación de contraseña.
-// Sin token en la URL: pide el email (la respuesta es 204 SIEMPRE — anti-enumeración).
-// Con ?token=...: formulario de contraseña nueva (enlace de un solo uso, vence en 30 min).
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../api/client'
 import charHat from '../assets/char-hat.png'
-// Diseño V2: fondo pastel con globos y cabritas (DISENO_LOGIN_V2.png)
 import bgV2 from '../assets/login-bg-v2.webp'
+import BaseButton from '../components/BaseButton.vue'
+import BaseToast from '../components/BaseToast.vue'
+import ErrorBanner from '../components/ErrorBanner.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,13 +17,14 @@ const password = ref('')
 const enviado = ref(false)
 const error = ref('')
 const cargando = ref(false)
+const toastExito = ref('')
 
 async function solicitar() {
   error.value = ''
   cargando.value = true
   try {
     await api.post('/auth/reset/solicitar', { email: email.value })
-    enviado.value = true // mismo mensaje exista o no el email
+    enviado.value = true
   } catch {
     error.value = 'Error de conexión, intenta de nuevo'
   } finally {
@@ -37,8 +37,8 @@ async function confirmar() {
   cargando.value = true
   try {
     await api.post('/auth/reset/confirmar', { token: token.value, nuevaPassword: password.value })
-    alert('Contraseña actualizada. Inicia sesión con la nueva.')
-    router.push('/login')
+    toastExito.value = 'Contraseña actualizada. Inicia sesión con la nueva.'
+    setTimeout(() => router.push('/login'), 2000)
   } catch (e) {
     error.value = e.response?.data?.message || 'El enlace es inválido o ya venció'
   } finally {
@@ -54,14 +54,13 @@ async function confirmar() {
     <div class="w-full max-w-md relative z-10">
       <div class="text-center mb-8">
         <div class="flex justify-center mb-4 h-28">
-          <img :src="charHat" alt="Personaje gorro de fiesta"
-               class="w-28 h-28 object-contain drop-shadow-xl character-img animate-floating" />
+          <img :src="charHat" alt="" class="w-28 h-28 object-contain drop-shadow-xl character-img animate-floating" aria-hidden="true" />
         </div>
         <h1 class="font-display font-extrabold text-3xl tracking-tight text-primary">Recuperar contraseña</h1>
       </div>
 
       <div class="glass-card rounded-3xl p-6 shadow-soft space-y-4">
-        <!-- Paso 2: con token en la URL, definir la contraseña nueva -->
+        <!-- Paso 2: con token en la URL -->
         <form v-if="token" @submit.prevent="confirmar" class="space-y-4">
           <p class="font-medium text-on-surface-variant text-center">Escribe tu contraseña nueva.</p>
           <div class="relative">
@@ -69,11 +68,10 @@ async function confirmar() {
             <input v-model="password" type="password" required minlength="8" placeholder="Contraseña nueva (mín. 8)"
                    class="block w-full pl-11 pr-3 py-3 border-2 border-surface-highest rounded-xl bg-surface placeholder-outline font-medium focus:outline-none focus:border-secondary transition-colors duration-200" />
           </div>
-          <p v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ error }}</p>
-          <button :disabled="cargando"
-                  class="w-full flex justify-center items-center py-3 px-4 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted transition-all duration-200 active:scale-95 disabled:opacity-50">
+          <ErrorBanner :mensaje="error" />
+          <BaseButton variante="primario" type="submit" :cargando="cargando" :deshabilitado="cargando" class="w-full py-3">
             {{ cargando ? 'Guardando…' : 'Guardar contraseña' }}
-          </button>
+          </BaseButton>
         </form>
 
         <!-- Paso 1: pedir el enlace por email -->
@@ -91,11 +89,10 @@ async function confirmar() {
               <input v-model="email" type="email" required placeholder="Email de tu cuenta"
                      class="block w-full pl-11 pr-3 py-3 border-2 border-surface-highest rounded-xl bg-surface placeholder-outline font-medium focus:outline-none focus:border-secondary transition-colors duration-200" />
             </div>
-            <p v-if="error" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ error }}</p>
-            <button :disabled="cargando"
-                    class="w-full flex justify-center items-center py-3 px-4 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted transition-all duration-200 active:scale-95 disabled:opacity-50">
+            <ErrorBanner :mensaje="error" />
+            <BaseButton variante="primario" type="submit" :cargando="cargando" :deshabilitado="cargando" class="w-full py-3">
               {{ cargando ? 'Enviando…' : 'Enviar enlace' }}
-            </button>
+            </BaseButton>
           </form>
         </template>
 
@@ -104,5 +101,7 @@ async function confirmar() {
         </RouterLink>
       </div>
     </div>
+
+    <BaseToast :mensaje="toastExito" tipo="exito" @cerrar="toastExito = ''" />
   </main>
 </template>
