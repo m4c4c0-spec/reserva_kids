@@ -23,6 +23,22 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     /** Job de expiración (RF-05): solicitudes pendientes más antiguas que el límite. */
     List<Reserva> findByEstadoAndCreadaEnBefore(EstadoReserva estado, OffsetDateTime limite);
 
+    /**
+     * Ocupación del agendamiento por hora: citas de un negocio que arrancan dentro del rango
+     * y en algún estado dado (PENDIENTE_PAGO/CONFIRMADA). Base para restar horas ya tomadas.
+     */
+    @Query("""
+            SELECT r FROM Reserva r
+            WHERE r.tenantId = :tenantId AND r.inicio >= :desde AND r.inicio < :hasta
+              AND r.estado IN :estados""")
+    List<Reserva> findCitasEntre(@Param("tenantId") Long tenantId,
+                                 @Param("desde") OffsetDateTime desde,
+                                 @Param("hasta") OffsetDateTime hasta,
+                                 @Param("estados") Collection<EstadoReserva> estados);
+
+    /** Expiración de citas no pagadas (PENDIENTE_PAGO) creadas antes del límite — liberan la hora. */
+    List<Reserva> findByEstadoAndInicioIsNotNullAndCreadaEnBefore(EstadoReserva estado, OffsetDateTime limite);
+
     /** Expiración de cotizaciones sin respuesta (falla #1, revisión a 2 años). */
     List<Reserva> findByEstadoAndCotizadaEnBefore(EstadoReserva estado, OffsetDateTime limite);
 

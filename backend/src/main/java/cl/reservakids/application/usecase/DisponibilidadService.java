@@ -1,8 +1,11 @@
 package cl.reservakids.application.usecase;
 
+import cl.reservakids.domain.model.EstadoReserva;
 import cl.reservakids.domain.model.HorarioAtencion;
+import cl.reservakids.domain.model.Reserva;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.HorarioAtencionRepository;
+import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -11,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,6 +35,7 @@ public class DisponibilidadService {
 
     private final HorarioAtencionRepository horarioRepository;
     private final TenantRepository tenantRepository;
+    private final ReservaRepository reservaRepository;
     private final Clock clock; // "hoy/ahora" en hora del negocio (America/Santiago)
 
     /** Intervalo ocupado del día, en minutos-del-día [inicio, fin). */
@@ -77,10 +83,22 @@ public class DisponibilidadService {
     }
 
     /**
-     * Intervalos ya tomados del día. Fase 4: se restan las citas PENDIENTE_PAGO/CONFIRMADA del
-     * modelo de reserva por datetime. Hasta que ese modelo exista, no hay citas por hora aún.
+     * Intervalos ya tomados del día: citas PENDIENTE_PAGO (hora retenida mientras se paga) y
+     * CONFIRMADA. Las marcas inicio/fin son instantes; se convierten a la hora local del negocio
+     * para comparar contra el horario de atención.
      */
     private List<Ocupado> intervalosOcupados(Long tenantId, LocalDate fecha) {
-        return List.of();
+        ZoneId zona = clock.getZone();
+        OffsetDateTime desde = fecha.atStartOfDay(zona).toOffsetDateTime();
+        OffsetDateTime hasta = fecha.plusDays(1).atStartOfDay(zona).toOffsetDateTime();
+        List<Reserva> citas = reservaRepository.findCitasEntre(
+                tenantId, desde, hasta, List.of(EstadoReserva.PENDIENTE_PAGO, EstadoReserva.CONFIRMADA));
+        List<Ocupado> ocupados = new ArrayList<>();
+        for (Reserva c : citas) {
+            int ini = c.getInicio().atZoneSameInstant(zona).toLocalTime().toSecondOfDay() / 60;
+            int fin = c.getFin().atZoneSameInstant(zona).toLocalTime().toSecondOfDay() / 60;
+            ocupados.add(new Ocupado(ini, fin));
+        }
+        return ocupados;
     }
 }
