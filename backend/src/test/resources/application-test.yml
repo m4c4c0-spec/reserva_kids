@@ -1,0 +1,35 @@
+# Perfil de test de integración con Testcontainers.
+# Spring Boot reescribe la URL de datasource con la del contenedor Postgres levantado dinámicamente.
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:16-alpine:///reservakids
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+app:
+  jwt:
+    secret: test-secret-de-64-bytes-minimo-para-que-funcione-hs256-en-tests
+    issuer: reservakids-test
+    audience: reservakids-web-test
+    access-minutes: 15
+    refresh-days: 7
+  mail:
+    from: test@reservakids.cl
+  password-reset:
+    minutos: 30
+  reservas:
+    expiracion-horas: 48
+    cotizacion-expiracion-dias: 14
+  citas:
+    pago-expiracion-min: 30
+  clientes:
+    retencion-meses: 24
+  tenants:
+    purga-dias-tras-cierre: 90
+  zona-horaria: America/Santiago
+  security:
+    trust-proxy: false
+    cred-key: ""
