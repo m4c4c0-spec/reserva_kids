@@ -91,7 +91,41 @@ function aDiaYHora() {
 }
 function aPago() {
   if (!horaSel.value) return
-  paso.value = 3 // Fase 4: pasarela de pago
+  paso.value = 3
+}
+
+// Paso 3: crea la cita (PENDIENTE_PAGO) y redirige a Mercado Pago. "Pago = agendado":
+// la cita solo se confirma cuando MP aprueba (webhook).
+const agendando = ref(false)
+const errorPago = ref('')
+
+async function pagar() {
+  errorPago.value = ''
+  agendando.value = true
+  try {
+    const { data } = await axios.post(
+      `${baseURL}/cliente/agendar/${slug}`,
+      { servicioIds: [...seleccionadas.value], fecha: fecha.value, hora: horaSel.value },
+      { headers: { Authorization: `Bearer ${auth.accessToken}` } },
+    )
+    window.location.href = data.initPoint // a la pasarela de Mercado Pago
+  } catch (e) {
+    if (e.response?.status === 401) {
+      auth.logout()
+      router.push('/clientes/entrar')
+      return
+    }
+    if (e.response?.status === 409) {
+      // otro cliente tomó la hora mientras tanto → de vuelta a elegir hora
+      errorPago.value = e.response.data?.message || 'Esa hora ya no está disponible'
+      paso.value = 2
+      cargarHoras()
+      return
+    }
+    errorPago.value = e.response?.data?.message || 'No se pudo iniciar el pago, intenta de nuevo'
+  } finally {
+    agendando.value = false
+  }
 }
 
 onMounted(async () => {
@@ -211,15 +245,44 @@ onMounted(async () => {
         </div>
       </template>
 
-      <!-- PASO 3: placeholder (Fase 4) -->
-      <div v-else class="text-center bg-surface-container rounded-3xl px-5 py-10">
-        <span class="material-symbols-outlined text-4xl text-on-surface-variant">payments</span>
-        <p class="font-display font-bold text-on-surface mt-2">Pago — en construcción</p>
-        <p class="font-medium text-on-surface-variant text-sm mt-1">
-          Resumen: {{ serviciosSel.length }} servicio(s) · {{ clp(totalClp) }} · {{ fechaLarga }} a las {{ horaSel }}
-        </p>
-        <button @click="paso = 2" class="mt-4 text-sm font-bold text-secondary hover:text-primary">← Volver a día y hora</button>
-      </div>
+      <!-- PASO 3: resumen y pago -->
+      <template v-else>
+        <div>
+          <h1 class="font-display font-extrabold text-2xl text-primary tracking-tight">Confirma y paga</h1>
+          <p class="font-medium text-on-surface-variant text-sm mt-0.5">Tu hora se confirma al aprobarse el pago.</p>
+        </div>
+
+        <div class="bg-surface-lowest rounded-2xl border border-outline-variant/20 p-5 space-y-3">
+          <div class="flex items-center gap-2 text-on-surface font-bold">
+            <span class="material-symbols-outlined text-primary">event</span>
+            <span class="capitalize">{{ fechaLarga }} · {{ horaSel }}</span>
+          </div>
+          <ul class="divide-y divide-outline-variant/15">
+            <li v-for="s in serviciosSel" :key="s.id" class="flex justify-between py-2 text-sm">
+              <span class="text-on-surface">{{ s.nombre }} <span class="text-on-surface-variant">· {{ duracion(s.duracionMin) }}</span></span>
+              <span class="font-bold text-on-surface">{{ clp(s.precioClp) }}</span>
+            </li>
+          </ul>
+          <div class="flex justify-between items-center pt-1">
+            <span class="font-bold text-on-surface">Total · {{ duracion(duracionTotalMin) }}</span>
+            <span class="font-extrabold text-lg text-primary">{{ clp(totalClp) }}</span>
+          </div>
+        </div>
+
+        <p v-if="errorPago" class="text-sm font-semibold text-on-error-container bg-error-container rounded-xl px-3 py-2">{{ errorPago }}</p>
+
+        <div class="flex items-center gap-3">
+          <button @click="paso = 2" :disabled="agendando"
+                  class="py-3 px-4 rounded-full font-bold text-on-surface-variant hover:text-primary transition-colors disabled:opacity-40">
+            Atrás
+          </button>
+          <button @click="pagar" :disabled="agendando"
+                  class="flex-1 flex justify-center items-center py-3.5 px-6 rounded-full shadow-md font-bold text-on-primary-container bg-primary-container hover:bg-primary-fixed hover:shadow-lifted transition-all active:scale-95 disabled:opacity-50">
+            <span class="material-symbols-outlined mr-2 text-[20px]">lock</span>
+            {{ agendando ? 'Redirigiendo…' : `Pagar ${clp(totalClp)}` }}
+          </button>
+        </div>
+      </template>
     </div>
 
     <!-- Barra inferior: resumen + acción del paso -->
