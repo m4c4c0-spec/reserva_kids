@@ -28,4 +28,21 @@ public interface TenantRepository extends JpaRepository<Tenant, Long> {
               AND EXISTS (SELECT 1 FROM Servicio s WHERE s.tenantId = t.id AND s.activo = true)
             ORDER BY t.nombre""")
     List<Tenant> findAgendables(@Param("activo") String activo);
+
+    /**
+     * Consola de admin (F2): todos los negocios con su nº de reservas, filtrable por estado y
+     * texto (nombre/slug). Un único query agregado (LEFT JOIN + GROUP BY) evita el N+1 de contar
+     * reservas por tenant. Proyección {@link NegocioAdminView}.
+     */
+    @Query("""
+            SELECT t.id AS id, t.slug AS slug, t.nombre AS nombre, t.plan AS plan,
+                   t.estado AS estado, t.creadoEn AS creadoEn, COUNT(r.id) AS reservas
+            FROM Tenant t LEFT JOIN Reserva r ON r.tenantId = t.id
+            WHERE (:estado IS NULL OR t.estado = :estado)
+              AND (:patron IS NULL
+                   OR LOWER(t.nombre) LIKE :patron
+                   OR LOWER(t.slug)   LIKE :patron)
+            GROUP BY t.id, t.slug, t.nombre, t.plan, t.estado, t.creadoEn
+            ORDER BY t.creadoEn DESC""")
+    List<NegocioAdminView> listarParaAdmin(@Param("estado") String estado, @Param("patron") String patron);
 }
