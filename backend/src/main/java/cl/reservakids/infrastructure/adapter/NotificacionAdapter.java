@@ -74,7 +74,8 @@ public class NotificacionAdapter implements NotificacionPort {
     private final AtomicInteger fallosConsecutivos = new AtomicInteger();
     // ultimoError se conserva SOLO para los logs del servidor: puede contener el email de
     // destino de otro negocio o detalles del SMTP, así que NO viaja en la respuesta del
-    // endpoint (S2: /api/sistema/notificaciones lo ve cualquier usuario autenticado).
+    // endpoint (S2: /api/sistema/notificaciones lo ven los dueños — hasRole DUENO en
+    // SecurityConfig — pero igual no se expone: el contador basta para el aviso del panel).
     private volatile String ultimoError;
     private volatile OffsetDateTime ultimoFalloEn;
 
