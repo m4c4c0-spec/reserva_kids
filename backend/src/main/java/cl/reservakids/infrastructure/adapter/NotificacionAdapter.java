@@ -3,6 +3,7 @@ package cl.reservakids.infrastructure.adapter;
 import cl.reservakids.application.usecase.CitaTexto;
 import cl.reservakids.application.usecase.NotificacionPort;
 import cl.reservakids.domain.model.Cliente;
+import cl.reservakids.domain.model.CuentaCliente;
 import cl.reservakids.domain.model.Reserva;
 import cl.reservakids.domain.model.ReservaServicio;
 import cl.reservakids.domain.model.Tenant;
@@ -109,6 +110,12 @@ public class NotificacionAdapter implements NotificacionPort {
         ejecutarTrasCommit(() -> enviarReset(usuario, tokenPlano));
     }
 
+    /** Reset de contraseña para cuentas de cliente (apoderados): mismo patrón AFTER_COMMIT. */
+    @Override
+    public void resetPasswordCliente(CuentaCliente cuenta, String tokenPlano) {
+        ejecutarTrasCommit(() -> enviarResetCliente(cuenta, tokenPlano));
+    }
+
     private void ejecutarTrasCommit(Runnable envio) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -154,6 +161,41 @@ public class NotificacionAdapter implements NotificacionPort {
             ultimoFalloEn = OffsetDateTime.now();
             log.error("Fallo enviando reset de contraseña a {} ({} consecutivos): {}",
                     usuario.getEmail(), fallosConsecutivos.get(), e.getMessage());
+        }
+    }
+
+    private void enviarResetCliente(CuentaCliente cuenta, String tokenPlano) {
+        String link = frontendUrl + "/clientes/reset/confirmar?token="
+                + URLEncoder.encode(tokenPlano, StandardCharsets.UTF_8);
+        try {
+            JavaMailSender sender = senderConfigurado();
+            if (sender == null) {
+                // Sin SMTP el log es el único canal (MVP). Con SMTP el enlace NUNCA se loguea.
+                log.info("Reset de contraseña (cliente) solicitado para {} [email no configurado]: {}",
+                        cuenta.getEmail(), link);
+                return;
+            }
+            SimpleMailMessage mensaje = new SimpleMailMessage();
+            mensaje.setFrom(remitente);
+            mensaje.setTo(cuenta.getEmail());
+            mensaje.setSubject("🔑 Restablece tu contraseña — ReservaKids");
+            mensaje.setText("""
+                    Hola %s, recibimos una solicitud para restablecer tu contraseña.
+
+                    Crea una nueva aquí (el enlace vence en 30 minutos y sirve UNA vez):
+                    %s
+
+                    Si no lo pediste, ignora este correo: tu contraseña sigue igual.
+                    """.formatted(cuenta.getNombre(), link));
+            sender.send(mensaje);
+            fallosConsecutivos.set(0);
+            log.info("Email de reset de contraseña (cliente) enviado a {}", cuenta.getEmail());
+        } catch (Exception e) {
+            fallosConsecutivos.incrementAndGet();
+            ultimoError = e.getMessage();
+            ultimoFalloEn = OffsetDateTime.now();
+            log.error("Fallo enviando reset de contraseña (cliente) a {} ({} consecutivos): {}",
+                    cuenta.getEmail(), fallosConsecutivos.get(), e.getMessage());
         }
     }
 

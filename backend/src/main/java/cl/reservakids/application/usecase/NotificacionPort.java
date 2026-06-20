@@ -1,6 +1,7 @@
 package cl.reservakids.application.usecase;
 
 import cl.reservakids.domain.model.Cliente;
+import cl.reservakids.domain.model.CuentaCliente;
 import cl.reservakids.domain.model.Reserva;
 import cl.reservakids.domain.model.ReservaServicio;
 import cl.reservakids.domain.model.Tenant;
@@ -27,4 +28,7 @@ public interface NotificacionPort {
      * en claro UNA vez por este canal; el adaptador arma el link con la URL del frontend.
      */
     void resetPassword(Usuario usuario, String tokenPlano);
+
+    /** Reset de contraseña para cuentas de cliente (apoderados). */
+    void resetPasswordCliente(CuentaCliente cuenta, String tokenPlano);
 }
