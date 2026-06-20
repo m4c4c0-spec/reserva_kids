@@ -1,5 +1,6 @@
 package cl.reservakids.infrastructure.web;
 
+import cl.reservakids.application.dto.AdminDtos.MetricasGlobales;
 import cl.reservakids.application.dto.AdminDtos.NegocioAdminResumen;
 import cl.reservakids.application.usecase.AdminService;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,12 @@ import java.util.List;
 public class AdminController {
 
     private final AdminService adminService;
+
+    /** KPIs globales de plataforma (F4). */
+    @GetMapping("/metricas")
+    public MetricasGlobales metricas() {
+        return adminService.metricas();
+    }
 
     /** Listado de negocios, filtrable por estado (ACTIVO/SUSPENDIDO/CERRADO) y texto. */
     @GetMapping("/negocios")
