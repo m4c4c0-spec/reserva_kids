@@ -321,3 +321,148 @@ por SSH). Iterado contra las demás fallas, reusando maquinaria ya probada:
 - `mvn test`: **BUILD SUCCESS — 49/49** (+5 de reset en `AuthServiceTest`, purgas verificadas).
 - Cadena V1–V7 ensayada completa contra `postgres:16-alpine`.
 - `npm run build`: OK (~55.7 kB gzip).
+
+### Paso 33b — Primer commit del repositorio
+
+Tras cerrar las fallas de código de la revisión a 5 años, el MVP completo (Sesiones 1–6 +
+fallas 3.3/3.2/1.3) se versionó por primera vez en git:
+
+- `3395599` **Commit inicial: ReservaKids Digital — MVP completo**
+- `7a6e3fc` Falla 1.3 (recuperación de contraseña por email)
+- `93401d7` Docs: marcar 1.3 implementada en la revisión a 5 años y README
+
+---
+
+## 2026-06-18 — Sesión 7: Pasarela de pago, cuentas de apoderado y pivote a citas por hora
+
+> Cambio de rumbo del producto: de "reservas de cumpleaños por bloques" a **agendamiento de
+> citas por hora multi-servicio** con pago en línea. Migraciones **V8–V14**.
+
+### Paso 34 — Integración de Mercado Pago (pasarela de pago)
+
+- `V8__integracion_mercadopago.sql` + `V10__cifrar_credenciales_mercadopago.sql`: credenciales
+  del tenant **cifradas en reposo** (no se guardan en claro), patrón coherente con el SHA-256
+  de los refresh tokens.
+- Adaptador de pago saliente (puerto `PasarelaPagoPort`); creación de preferencia de pago y
+  recepción de confirmación por **webhook**.
+- `375210d` fix(email): **Mailpit** como buzón SMTP en desarrollo, configuración de
+  SMTP/claves y endurecimiento para **no filtrar errores entre tenants**.
+- Commits: `5215288` (pagos + cifrado), `375210d` (email/dev).
+
+### Paso 35 — Cuentas de apoderado (cliente con login propio)
+
+- `V11__cuenta_cliente.sql` + `V12__telefono_cuenta_cliente.sql`: el apoderado deja de ser un
+  registro pasivo y pasa a tener **cuenta con login propio**, separada del usuario-negocio.
+- Directorio público de negocios; registro con teléfono y pantalla de bienvenida.
+- `V9__normalizar_emails_usuario.sql`: normalización de emails para login consistente.
+- Commits: `65ee6d0` (cuentas de apoderado + directorio), `8b4290c` (registro con teléfono).
+
+### Paso 36 — Rediseño Festive (UI) y reescritura del frontend
+
+- `f6d2280` feat(ui): **rediseño Festive** del login (fondo V2), vista de configuración del
+  negocio y wiring del frontend con los nuevos endpoints.
+- `6f38887` docs: revisión de arquitectura a 5 años, manual de despliegue y README actualizados.
+
+### Paso 37 — Pivote a agendamiento por hora con pago (Fase 4)
+
+| Pieza | Detalle |
+|---|---|
+| `V13__horario_atencion.sql` | Disponibilidad calculada a partir del **horario de atención** del negocio, en lugar de bloques precreados |
+| `V14__cita_por_hora.sql` | Modelo de **cita por hora** con estado `PENDIENTE_PAGO` |
+| Wizard de cliente | Elegir servicio(s) → día → hora |
+| Agendar con pago | Crea la cita, redirige a Mercado Pago y **confirma por webhook** |
+
+- Commits: `9b43be7`, `c28a5d8` (horario + wizard), `72919d3` (modelo de cita), `26bd98c`
+  (agendar con pago + webhook).
+- **Merges (gitflow):** `feature/agendamiento-pago-webhook` → `produccion` (`81651af`) →
+  `main` (`4dc14cc`).
+
+---
+
+## 2026-06-19 — Sesión 8: Notificación de cita, concurrencia y endurecimiento
+
+> Migraciones **V15–V16**. Refactor de jobs y de frontend; subida de Spring Boot.
+
+### Paso 38 — Notificación de cita y concurrencia
+
+| Pieza | Detalle / falla que cubre |
+|---|---|
+| `a934956` Notificación de cita | Confirmación al apoderado por **WhatsApp y correo** (AFTER_COMMIT) |
+| `V15__cita_concurrencia.sql` (`5e8a5f9`) | Anti doble-reserva a nivel de cita con **advisory lock** de Postgres (segunda barrera RNF-05 trasladada al nuevo modelo) |
+| `V16__refresh_token_cliente.sql` (`b0f08f2`) | **Refresh token con rotación** para las cuentas de apoderado (mismo modelo que el usuario-negocio) |
+| `03e1093` Horario de atención | API de horario + seed por defecto |
+
+### Paso 39 — Refactors y seguridad
+
+- `4246519` refactor(jobs): separar `ExpiracionService` en **`CicloReservaJobs`** y
+  **`MantenimientoJobs`** (preámbulo de la descomposición posterior por acoplamiento).
+- `984e53c` + `2c9745a` refactor(frontend): componentes base, services y composables; migración
+  de las vistas restantes.
+- `dd50ab4` feat(security): **refresh token en cookie HttpOnly** (SameSite=Lax), saca el token
+  del alcance de JS.
+- `d56cb65` chore(deps): **Spring Boot 3.5.6**.
+- `bc86449` feat(legal): página de **política de privacidad**.
+- `4e71300` test(integracion): tests de integración con **Testcontainers**.
+
+### Paso 40 — Merges (gitflow)
+
+- `feature/notificacion-cita` → `produccion` (`8de3c8d`) → `main` (`ee2a984`).
+
+---
+
+## 2026-06-20 — Sesión 9: Auditoría SonarQube + reset de contraseña de cliente
+
+> Auditoría de deuda técnica y seguridad con **SonarQube Community** (Docker, `:9000`),
+> escaneo Maven del backend. Migración **V17**. Detalle ampliado en la nota de proyecto.
+
+### Paso 41 — Reset de contraseña para cuentas de apoderado
+
+- `6deea1f` feat(auth): **reset de contraseña para clientes** (`V17__reset_token_cliente.sql`),
+  reutilizando la maquinaria del reset del usuario-negocio (UUID + SHA-256, un solo uso, 30 min,
+  204 siempre anti-enumeración). Email AFTER_COMMIT con enlace a `/clientes/reset/confirmar`;
+  sin SMTP degrada a log.
+
+### Paso 42 — Auditoría SonarQube: seguridad, acoplamiento, complejidad y code smells
+
+Resultado de `2b9c838` refactor(backend) — **todo verificado con 58 tests unitarios verdes**:
+
+| Hallazgo | Acción |
+|---|---|
+| **Hotspot CSRF** (`SecurityConfig`) | Revisado **SEGURO** (Bearer + STATELESS + refresh cookie HttpOnly + CORS restrictivo); comentario reescrito y marcado SAFE. Security Review **E → A** |
+| **3× self-invocation `@Transactional`** (S6809) | Extraídos helpers privados sin `@Transactional` (`confirmarInterno`, `registrarPagoInterno`, `construirExport`); **3 → 0**, sin cambio de comportamiento |
+| **2 bugs** `WebhookController` (S6863) | El `return 200 "ignorado"` vivía dentro de un `catch` (2xx que enmascaraba errores). Helper `parsearLongOrNull`; el 200 deliberado (para que MP no reintente) queda fuera del catch. **Fiabilidad C → A, 0 bugs** |
+| **Acoplamiento ≥9 deps** | `MantenimientoJobs` (11) **eliminado** → `TokenMantenimientoJobs`/`ClienteRetencionJobs`/`BloqueMantenimientoJobs`/`TenantPurgaJobs`. `AuthService` 9→7 (extraído `PasswordResetService` + `AuthCrypto`). `TenantService` 10→8 (extraído `TenantExportService`). `ReservaService`/`AgendaService` no tocados (cohesivos) |
+| **Complejidad cognitiva** (S3776) | `WebhookController.recibirWebhook` 27→<15 y `DisponibilidadService.horasLibres` 20→<15 (métodos extraídos). **S3776 = 0** |
+| **Code smells 56 → 0** | Ternarios anidados, literales duplicados (constantes), regex `\D`, import/excepción genérica, naming, dead-store; + **Quality Profile "ReservaKids Java"** con 6 reglas desactivadas y justificadas (S8688/S8692/S5778/S8694/S2143/S1135) |
+
+**Estado final del backend:** Quality Gate **OK** · 4 calificaciones en **A** ·
+**0 bugs · 0 vulnerabilidades · 0 hotspots · 0 code smells · deuda 0 min**.
+
+### Paso 43 — Verificación y release (gitflow)
+
+- `mvn test` (contenedor Maven): **58 tests verdes**; `npm run build` OK (~55.x kB gzip).
+- 3 commits lógicos en `feature/calidad-y-reset-cliente`: `6deea1f` (reset cliente),
+  `2b9c838` (calidad SonarQube), `75adc24` (refactor frontend, tooling, CI y docs).
+- **Merges:** `feature/calidad-y-reset-cliente` → `produccion` (`0e84bf4`) → `main` (`2a586d5`).
+- **CI en GitHub** (`2a586d5`): ✅ success — Backend 32s, Frontend 21s.
+
+---
+
+## 2026-06-20 (mediodía) — Sesión 10: Tenant scoping en lookups de cliente (§5.6)
+
+### Paso 44 — Fix de aislamiento multi-tenant
+
+- `7b211fe` fix(security): **tenant scoping en los lookups de cliente** (§5.6) — los lookups
+  pasan a usar `findByIdAndTenantId`, cerrando una vía por la que el `tenantId` no se
+  verificaba en algunos accesos a cliente; además se corrigieron las **referencias de jobs**
+  tras el split de `ExpiracionService` (Sesión 8/9).
+- `ddd2867` test(reserva): alinear los stubs de test con `findByIdAndTenantId`.
+
+### Paso 45 — Merges, push y CI
+
+- **Merges:** `fix/tenant-scoping-cliente-refs` → `produccion` (`4e640cd`) → `main` (`a27c026`).
+- Las 3 ramas (`fix/...`, `produccion`, `main`) **pusheadas y sincronizadas** con `origin`.
+- **CI en GitHub** (`a27c026`): ✅ success (40s).
+
+> Estado al cierre del 2026-06-20: working tree limpio, sin ramas pendientes de mergear a
+> `main`, sin stashes. Migraciones al día en **V17**.
