@@ -193,7 +193,7 @@ public class ReservaService {
 
     /**
      * Falla #2 (revisión a 2 años): cierre manual CONFIRMADA → REALIZADA desde el panel.
-     * El barrido diario de ExpiracionService cubre las que el dueño olvide cerrar.
+     * El barrido diario de CicloReservaJobs cubre las que el dueño olvide cerrar.
      */
     @Transactional
     public ReservaResponse realizar(Long tenantId, Long id) {
@@ -295,7 +295,11 @@ public class ReservaService {
     /** Tras confirmar una cita por hora: avisa al cliente por email y WhatsApp (stub por ahora). */
     private void notificarCitaConfirmada(Reserva cita) {
         Tenant tenant = tenantRepository.findById(cita.getTenantId()).orElse(null);
-        Cliente cliente = clienteRepository.findById(cita.getClienteId()).orElse(null);
+        // Defense-in-depth (§5.6): la cita ya se obtuvo tenant-scoped, pero usamos
+        // findByIdAndTenantId para que un clienteId huérfano/apuntando a otro tenant
+        // no se lea aquí tampoco.
+        Cliente cliente = clienteRepository
+                .findByIdAndTenantId(cita.getClienteId(), cita.getTenantId()).orElse(null);
         if (tenant == null || cliente == null) {
             return;
         }
@@ -320,8 +324,11 @@ public class ReservaService {
 
     private ReservaResponse respuesta(Reserva reserva, Cliente clienteConocido) {
         int pagado = reserva.getId() == null ? 0 : pagoRepository.totalPagado(reserva.getId());
+        // Defense-in-depth (§5.6): mismo criterio que notificarCitaConfirmada —
+        // findByIdAndTenantId aunque el reserva.getClienteId() venga de una reserva ya tenant-scoped.
         Cliente cliente = clienteConocido != null ? clienteConocido
-                : clienteRepository.findById(reserva.getClienteId()).orElse(null);
+                : clienteRepository.findByIdAndTenantId(reserva.getClienteId(), reserva.getTenantId())
+                        .orElse(null);
         String link = cliente == null ? null : notificacion.linkWhatsApp(cliente, reserva);
         return ReservaResponse.de(reserva, pagado, link);
     }
