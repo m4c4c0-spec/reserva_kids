@@ -466,3 +466,79 @@ Resultado de `2b9c838` refactor(backend) — **todo verificado con 58 tests unit
 
 > Estado al cierre del 2026-06-20: working tree limpio, sin ramas pendientes de mergear a
 > `main`, sin stashes. Migraciones al día en **V17**.
+
+---
+
+## 2026-06-20 (tarde) — Sesión 11: Cierre de sprints pendientes + PWA + release v0.1.0
+
+> Auditoría independiente (`AUDITORIA_RESERVA_KIDS.md`) detectó que los Sprints 2 y 3 del
+> `PLAN_MEJORA_FRONTEND.MD` estaban a medio aplicar: los métodos de servicio existían pero
+> no estaban cableados a los controllers, faltaban tests, y no había PWA ni SEO. Esta sesión
+> cierra esos pendientes y versiona el resultado como **v0.1.0**.
+
+### Paso 46 — Backend: endpoints del Sprint 2 cableados
+
+Los métodos `solicitarResetPassword`/`confirmarResetPassword` existían en `ClienteAuthService`
+y la query de historial era trivial, pero **no estaban expuestos** en los controllers:
+
+| Cambio | Archivo |
+|---|---|
+| `POST /api/cliente-auth/reset/solicitar` + `/confirmar` (204 siempre, anti-enumeración) | `ClienteAuthController` |
+| `GET /api/cliente/reservas` (rol CLIENTE, `cuentaClienteId` del JWT, cruza tenants) | `DirectorioController` |
+| `listarReservasDeCliente` (anti-N+1, mismo patrón que `listar()`) | `ReservaService` |
+| `findByCuentaClienteId[AndEstado]OrderByCreadaEnDesc` | `ReservaRepository` |
+
+### Paso 47 — Tests backend (+8 unit, +3 IT)
+
+| Test | Cubre |
+|---|---|
+| `ClienteReservaServiceTest` (4) | Scoping por `cuentaClienteId`, filtro por estado, página vacía, anti-N+1 |
+| `PasswordResetClienteTest` (4) | Solicitud silenciosa, token de un solo uso, revocación de sesiones |
+| `PublicControllerIT` (3) | Catálogo, 404 slug inexistente, horas libres (IT con Testcontainers) |
+
+### Paso 48 — Frontend: PWA completa + iOS/Apple tags + SEO
+
+**PWA** (Sprint 3 §3.2): el panel del negocio (`/panel/**`) es instalable como app nativa
+sin tiendas. `vite-plugin-pwa` con `autoUpdate`, manifest con `display_override` + iconos
+`any`/`maskable` (192/512), service worker que precachea el shell (62 entries, 705 KiB) sin
+tocar las respuestas de la API.
+
+**iOS/Apple** (meta tags que iOS no lee del manifest): `apple-mobile-web-app-capable`,
+`apple-touch-icon` 180×180 sin alpha, `viewport-fit=cover`. Safe-area insets en top-bar y
+bottom-nav del `DashboardLayout` para respetar notch y home indicator.
+
+**Prompt de instalación** (`usePwaInstall` composable): captura `beforeinstallprompt`
+(Chrome/Android/Edge), botón "Instalar app" en sidebar y top-bar. iOS no dispara el evento
+→ instalación manual vía "Compartir → Añadir a pantalla de inicio" (documentado).
+
+**SEO** (Sprint 3 §3.3): `@vueuse/head` con meta tags dinámicos por negocio en
+`PublicSiteView` y estáticos en `LandingPageView`.
+
+### Paso 49 — Tests frontend (+13, total 45)
+
+- `BaseButton.spec` (8): variantes, disabled, loading, spinner.
+- `useDuration.spec` (5): formato horas/minutos/mixto, null/negativo.
+
+### Paso 50 — Documentación
+
+- `MANUAL_DESPLIEGUE.md`: sección "Instalación como app móvil (PWA)" con pasos para
+  iOS/Android/escritorio, requisitos servidos, comportamiento de actualizaciones y qué
+  NO es la PWA (sin push nativo, sin offline de API, sin tiendas).
+
+### Paso 51 — Release v0.1.0
+
+3 commits lógicos en `main` siguiendo conventional commits:
+
+- `cdaa420` feat(cliente): historial de reservas y reset de contraseña para apoderados
+- `8784d0a` feat(pwa): PWA completa con instalación iOS/Android/escritorio
+- `10c157d` docs(deploy): sección de instalación PWA en manual de despliegue
+
+Tag **v0.1.0**. Versiones alineadas: `pom.xml` `0.1.0`, `package.json` `0.1.0`.
+
+### Paso 52 — Verificación final
+
+- `mvn test`: **66 tests verdes** (58 previos + 8 nuevos).
+- `npm run test:run`: **45 tests verdes** (9 archivos, 2 nuevos).
+- `npm run build` (con `VITE_API_URL` de producción): **62 entries PWA precache, 705 KiB**.
+- `npm run lint`: sin errores.
+- Build de producción generado en `frontend/dist/` listo para servir por Caddy.
