@@ -1,8 +1,12 @@
 package cl.reservakids.application;
 
+import cl.reservakids.application.dto.AdminDtos.MetricasGlobales;
 import cl.reservakids.application.dto.AdminDtos.NegocioAdminResumen;
 import cl.reservakids.application.usecase.AdminService;
+import cl.reservakids.domain.model.EstadoReserva;
 import cl.reservakids.domain.model.Tenant;
+import cl.reservakids.domain.repository.CuentaClienteRepository;
+import cl.reservakids.domain.repository.PagoRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.TenantRepository;
@@ -24,6 +28,8 @@ class AdminServiceTest {
     @Mock TenantRepository tenantRepository;
     @Mock ReservaRepository reservaRepository;
     @Mock RefreshTokenRepository refreshTokenRepository;
+    @Mock CuentaClienteRepository cuentaClienteRepository;
+    @Mock PagoRepository pagoRepository;
 
     @InjectMocks AdminService service;
 
@@ -86,6 +92,29 @@ class AdminServiceTest {
     void detalleDeNegocioInexistenteFalla() {
         when(tenantRepository.findById(99L)).thenReturn(Optional.empty());
         assertThrows(IllegalArgumentException.class, () -> service.detalle(99L));
+    }
+
+    @Test
+    void metricasAgregaLosKpisDePlataforma() {
+        when(tenantRepository.count()).thenReturn(10L);
+        when(tenantRepository.countByEstado(Tenant.ESTADO_ACTIVO)).thenReturn(7L);
+        when(tenantRepository.countByEstado(Tenant.ESTADO_SUSPENDIDO)).thenReturn(2L);
+        when(tenantRepository.countByEstado(Tenant.ESTADO_CERRADO)).thenReturn(1L);
+        when(reservaRepository.count()).thenReturn(120L);
+        when(reservaRepository.countByEstadoIn(EstadoReserva.ACTIVOS)).thenReturn(15L);
+        when(cuentaClienteRepository.count()).thenReturn(48L);
+        when(pagoRepository.totalRecaudadoPlataforma()).thenReturn(350000L);
+
+        MetricasGlobales m = service.metricas();
+
+        assertEquals(10L, m.negociosTotal());
+        assertEquals(7L, m.negociosActivos());
+        assertEquals(2L, m.negociosSuspendidos());
+        assertEquals(1L, m.negociosCerrados());
+        assertEquals(120L, m.reservasTotal());
+        assertEquals(15L, m.reservasActivas());
+        assertEquals(48L, m.apoderados());
+        assertEquals(350000L, m.recaudadoSenasClp());
     }
 
     private Tenant tenantConEstado(Long id, String estado) {

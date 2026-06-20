@@ -61,7 +61,8 @@ const router = createRouter({
       component: () => import('../views/AdminLayout.vue'),
       meta: { requiereAdmin: true },
       children: [
-        { path: '', redirect: '/admin/negocios' },
+        { path: '', redirect: '/admin/metricas' },
+        { path: 'metricas', component: () => import('../views/AdminMetricasView.vue') },
         { path: 'negocios', component: () => import('../views/AdminNegociosView.vue') },
       ],
     },
@@ -90,7 +91,7 @@ router.beforeEach((to) => {
   // de mostrarle de nuevo el formulario de login (UX + evita dobles sesiones).
   if (to.meta.soloInvitados === 'dueno' && auth.autenticado) return '/panel'
   if (to.meta.soloInvitados === 'cliente' && clienteAuth.autenticado) return '/clientes'
-  if (to.meta.soloInvitados === 'admin' && adminAuth.autenticado) return '/admin/negocios'
+  if (to.meta.soloInvitados === 'admin' && adminAuth.autenticado) return '/admin/metricas'
 })
 
 export default router
