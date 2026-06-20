@@ -1,6 +1,7 @@
 package cl.reservakids.application.usecase;
 
 import cl.reservakids.domain.repository.PasswordResetTokenRepository;
+import cl.reservakids.domain.repository.RefreshTokenAdminRepository;
 import cl.reservakids.domain.repository.RefreshTokenClienteRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class TokenMantenimientoJobs {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final RefreshTokenClienteRepository refreshTokenClienteRepository;
+    private final RefreshTokenAdminRepository refreshTokenAdminRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final Clock clock;
 
@@ -33,10 +35,11 @@ public class TokenMantenimientoJobs {
         OffsetDateTime ahora = OffsetDateTime.now(clock);
         int eliminados = refreshTokenRepository.purgarInvalidos(ahora);
         int clientes = refreshTokenClienteRepository.purgarInvalidos(ahora);
+        int admins = refreshTokenAdminRepository.purgarInvalidos(ahora);
         int resets = passwordResetTokenRepository.purgarInvalidos(ahora);
-        if (eliminados > 0 || clientes > 0 || resets > 0) {
-            log.info("Mantenimiento: {} refresh tokens dueños, {} refresh tokens clientes y {} tokens de reset purgados",
-                    eliminados, clientes, resets);
+        if (eliminados > 0 || clientes > 0 || admins > 0 || resets > 0) {
+            log.info("Mantenimiento: {} refresh tokens dueños, {} clientes, {} admins y {} tokens de reset purgados",
+                    eliminados, clientes, admins, resets);
         }
     }
 }

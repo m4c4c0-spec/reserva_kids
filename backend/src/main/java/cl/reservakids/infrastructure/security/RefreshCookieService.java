@@ -19,6 +19,7 @@ public class RefreshCookieService {
 
     public static final String COOKIE_DUENO = "rk_refresh";
     public static final String COOKIE_CLIENTE = "rk_cliente_refresh";
+    public static final String COOKIE_ADMIN = "rk_admin_refresh";
 
     /** Path restringido a /api: la cookie solo viaja a endpoints de la API. */
     private static final String PATH = "/api";

@@ -13,6 +13,7 @@ import cl.reservakids.domain.repository.BloqueDisponibleRepository;
 import cl.reservakids.domain.repository.ClienteRepository;
 import cl.reservakids.domain.repository.PagoRepository;
 import cl.reservakids.domain.repository.PasswordResetTokenRepository;
+import cl.reservakids.domain.repository.RefreshTokenAdminRepository;
 import cl.reservakids.domain.repository.RefreshTokenClienteRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
@@ -50,6 +51,7 @@ class MantenimientoJobsTest {
     @Mock BloqueDisponibleRepository bloqueRepository;
     @Mock RefreshTokenRepository refreshTokenRepository;
     @Mock RefreshTokenClienteRepository refreshTokenClienteRepository;
+    @Mock RefreshTokenAdminRepository refreshTokenAdminRepository;
     @Mock ClienteRepository clienteRepository;
     @Mock TenantRepository tenantRepository;
     @Mock PagoRepository pagoRepository;
@@ -67,11 +69,13 @@ class MantenimientoJobsTest {
     void purgaRefreshTokensInvalidos() {
         when(refreshTokenRepository.purgarInvalidos(any())).thenReturn(12);
         when(refreshTokenClienteRepository.purgarInvalidos(any())).thenReturn(5);
+        when(refreshTokenAdminRepository.purgarInvalidos(any())).thenReturn(1);
 
         tokenJobs.purgarRefreshTokens();
 
         verify(refreshTokenRepository).purgarInvalidos(any());
         verify(refreshTokenClienteRepository).purgarInvalidos(any());
+        verify(refreshTokenAdminRepository).purgarInvalidos(any());
         // Falla 1.3 (5 años): el mismo job purga los tokens de reset usados/vencidos
         verify(passwordResetTokenRepository).purgarInvalidos(any());
     }
