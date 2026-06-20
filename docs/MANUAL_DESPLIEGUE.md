@@ -243,3 +243,80 @@ Para evitar administrar un servidor (a costa de ~USD 5–10/mes extra y menos co
 
 Limitaciones: los jobs `@Scheduled` requieren que la instancia no "duerma" (no usar planes
 serverless que escalan a cero), y el rate limit en memoria supone 1 sola instancia.
+
+---
+
+## Instalación como app móvil (PWA)
+
+ReservaKids es una **PWA** (Progressive Web App): el panel del negocio se instala en el móvil
+o escritorio del dueño como si fuera una app nativa, sin pasar por tiendas de apps. Tras
+instalarla, abre en pantalla completa (sin barra del navegador), tiene su propio icono en el
+home screen y arranca sola. El service worker precachea el shell (HTML/CSS/JS/iconos) para
+que la app cargue instantáneo incluso con mala conexión — las respuestas de la API (reservas,
+calendario) siempre son frescas, no se cachean.
+
+> La PWA solo cubre el **panel del negocio** (`/panel/**`): las páginas públicas (`/{slug}`,
+> landing) se sirven como web normal para que clientes ocasionales no instalen nada.
+
+### Requisitos servidos
+
+- HTTPS (Caddy lo da automáticamente — la PWA no funciona sobre HTTP salvo en `localhost`).
+- `manifest.webmanifest` servido con `Content-Type: application/manifest+json` (Vite lo
+  genera en `dist/` y Caddy lo sirve como static file).
+- `sw.js` (service worker) en la raíz del scope — Vite lo genera en `dist/sw.js`.
+- Iconos 192/512 px (any + maskable) y `apple-touch-icon` 180px en `dist/icons/`.
+
+El build (`npm run build`) genera todo esto. No hay que hacer nada extra en el servidor.
+
+### Android (Chrome / Edge)
+
+1. Abrir `https://reservakids.cl/panel` en Chrome.
+2. El panel muestra un botón **"Instalar app"** (icono `install_mobile`) en la barra
+   superior (móvil) o en el sidebar (escritorio) cuando el navegador confirma que se puede
+   instalar. Tocarlo → confirmar.
+   - Alternativa sin botón: menú ⋮ → **"Añadir a pantalla de inicio"** / **"Instalar
+     aplicación"**.
+3. El icono de ReservaKids aparece en el home screen. Al abrirlo, va pantalla completa.
+
+> El botón "Instalar app" usa el evento `beforeinstallprompt` (Chrome/Edge/Android). Si el
+> usuario ya instaló la app, el botón desaparece automáticamente.
+
+### iOS (Safari)
+
+> iOS **no dispara** `beforeinstallprompt`, así que el botón "Instalar app" no aparece en
+> Safari. La instalación es manual pero igual de funcional.
+
+1. Abrir `https://reservakids.cl/panel` en Safari.
+2. Tocar el botón **Compartir** (cuadrado con flecha hacia arriba).
+3. Elegir **"Añadir a pantalla de inicio"**.
+4. Confirmar el título (por defecto "ReservaKids"). El icono aparece en el home screen.
+
+Tras instalar, abre en standalone (sin barra de Safari) con el `apple-touch-icon` y respeta
+el notch / home indicator gracias a `viewport-fit=cover` + `env(safe-area-inset-*)`.
+
+### Escritorio (Chrome / Edge)
+
+1. Abrir `https://reservakids.cl/panel` en Chrome/Edge.
+2. Icono **⊕ Instalar** en la barra de direcciones (a la derecha), o menú → **"Instalar
+   ReservaKids"**.
+3. Se abre en su propia ventana (sin pestañas) y se añade al dock/taskbar.
+
+### Actualizaciones
+
+`registerType: 'autoUpdate'` en la config de VitePWA hace que el service worker se
+actualice automáticamente cuando se publica una versión nueva. El usuario no necesita hacer
+nada: la próxima vez que abre la app, el SW descarga los assets nuevos y los activa al
+cerrar todas las pestañas. Para forzar la actualización inmediata, el usuario puede cerrar
+todas las instancias de la app y reabrirla.
+
+> Al publicar una versión nueva (paso 10 del manual), el nuevo `sw.js` reemplaza al viejo.
+> No hace falta que el usuario "desinstale y reinstale" — la PWA se actualiza sola.
+
+### Qué NO es la PWA
+
+- No hay notificaciones push nativas (requieren un service + API de push, fuera del MVP).
+  Los avisos llegan por email + WhatsApp.
+- No hay offline mode completo: el shell carga offline, pero las operaciones (crear
+  reserva, cotizar, confirmar) necesitan conexión a la API.
+- No está publicada en Play Store / App Store. Para eso se necesitaría un TWA (Trusted Web
+  Activity) o Capacitor — no justificado para bus factor 1.
