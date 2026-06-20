@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useClienteAuthStore } from '../stores/clienteAuth'
+import { useAdminAuthStore } from '../stores/adminAuth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -48,6 +49,22 @@ const router = createRouter({
     },
     { path: '/clientes/reset', component: () => import('../views/ClienteResetView.vue') },
     { path: '/clientes/reset/confirmar', component: () => import('../views/ClienteResetConfirmView.vue') },
+    // Consola de plataforma (admin). Va ANTES del catch-all /:slug: si no, /admin
+    // (un solo segmento) lo capturaría PublicSiteView como si fuera un slug de negocio.
+    {
+      path: '/admin/login',
+      component: () => import('../views/AdminLoginView.vue'),
+      meta: { soloInvitados: 'admin' },
+    },
+    {
+      path: '/admin',
+      component: () => import('../views/AdminLayout.vue'),
+      meta: { requiereAdmin: true },
+      children: [
+        { path: '', redirect: '/admin/negocios' },
+        { path: 'negocios', component: () => import('../views/AdminNegociosView.vue') },
+      ],
+    },
     { path: '/404', component: () => import('../views/NotFoundView.vue') },
     // Página pública de cada negocio: ruta dedicada con :slug param explícito.
     // Debe ir ANTES del catch-all para que route.params.slug esté definido
@@ -62,15 +79,18 @@ const router = createRouter({
 router.beforeEach((to) => {
   const auth = useAuthStore()
   const clienteAuth = useClienteAuthStore()
+  const adminAuth = useAdminAuthStore()
 
   // Rutas protegidas: requieren sesión activa.
   if (to.meta.requiereAuth && !auth.autenticado) return '/login'
   if (to.meta.requiereCliente && !clienteAuth.autenticado) return '/clientes/entrar'
+  if (to.meta.requiereAdmin && !adminAuth.autenticado) return '/admin/login'
 
   // Rutas "solo invitados": si ya tiene sesión, lo mandamos a su panel en vez
   // de mostrarle de nuevo el formulario de login (UX + evita dobles sesiones).
   if (to.meta.soloInvitados === 'dueno' && auth.autenticado) return '/panel'
   if (to.meta.soloInvitados === 'cliente' && clienteAuth.autenticado) return '/clientes'
+  if (to.meta.soloInvitados === 'admin' && adminAuth.autenticado) return '/admin/negocios'
 })
 
 export default router
