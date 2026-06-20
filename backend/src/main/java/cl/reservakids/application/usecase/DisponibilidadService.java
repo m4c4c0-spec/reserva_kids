@@ -60,26 +60,33 @@ public class DisponibilidadService {
 
         List<LocalTime> libres = new ArrayList<>();
         for (HorarioAtencion franja : horarioRepository.findByTenantIdAndDiaSemana(tenantId, dia)) {
-            int apertura = franja.getHoraApertura().toSecondOfDay() / 60;
-            int cierre = franja.getHoraCierre().toSecondOfDay() / 60;
-            for (int inicio = apertura; inicio + duracionTotalMin <= cierre; inicio += intervalo) {
-                int fin = inicio + duracionTotalMin;
-                if (inicio <= corteMin) {
-                    continue; // ya pasó (solo aplica si la fecha es hoy)
-                }
-                boolean solapa = false;
-                for (Ocupado o : ocupados) {
-                    if (inicio < o.finMin() && fin > o.inicioMin()) {
-                        solapa = true;
-                        break;
-                    }
-                }
-                if (!solapa) {
-                    libres.add(LocalTime.ofSecondOfDay(inicio * 60L));
-                }
-            }
+            agregarHorasDeFranja(franja, duracionTotalMin, intervalo, corteMin, ocupados, libres);
         }
         return libres.stream().distinct().sorted().toList();
+    }
+
+    /** Recorre una franja en pasos de {@code intervalo} y agrega las horas de inicio libres. */
+    private void agregarHorasDeFranja(HorarioAtencion franja, int duracionTotalMin, int intervalo,
+                                      int corteMin, List<Ocupado> ocupados, List<LocalTime> libres) {
+        int apertura = franja.getHoraApertura().toSecondOfDay() / 60;
+        int cierre = franja.getHoraCierre().toSecondOfDay() / 60;
+        for (int inicio = apertura; inicio + duracionTotalMin <= cierre; inicio += intervalo) {
+            int fin = inicio + duracionTotalMin;
+            // inicio > corteMin descarta lo ya pasado (solo aplica si la fecha es hoy).
+            if (inicio > corteMin && !solapaConOcupados(inicio, fin, ocupados)) {
+                libres.add(LocalTime.ofSecondOfDay(inicio * 60L));
+            }
+        }
+    }
+
+    /** ¿El intervalo [inicio, fin) pisa alguna cita ya tomada? */
+    private static boolean solapaConOcupados(int inicio, int fin, List<Ocupado> ocupados) {
+        for (Ocupado o : ocupados) {
+            if (inicio < o.finMin() && fin > o.inicioMin()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

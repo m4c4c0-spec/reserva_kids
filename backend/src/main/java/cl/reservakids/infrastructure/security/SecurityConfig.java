@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -37,7 +36,16 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
-                .csrf(csrf -> csrf.disable()) // API stateless con Bearer token, sin cookies de sesión
+                // CSRF deshabilitado de forma segura (Sonar java:S4502 revisado):
+                //  - Acceso autenticado por Bearer token en la cabecera Authorization: un sitio de
+                //    terceros no puede leerlo ni adjuntarlo, así que no hay vector CSRF clásico.
+                //  - Sesión STATELESS: no existe cookie de sesión de Spring que falsificar.
+                //  - Las únicas cookies son los refresh tokens (rk_refresh / rk_cliente_refresh),
+                //    HttpOnly + SameSite (RefreshCookieService, app.cookies.same-site=Lax): el
+                //    navegador no las envía en peticiones cross-site, neutralizando CSRF en /refresh.
+                //  - Endpoints JSON (Content-Type application/json) exigen preflight, que el CORS
+                //    restrictivo (solo el origen del frontend) rechaza desde otros orígenes.
+                .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth

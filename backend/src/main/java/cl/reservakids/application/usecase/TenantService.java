@@ -14,17 +14,14 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * Offboarding de tenant (falla 3.3, revisión a 5 años): un negocio que se va
- * se lleva sus datos (export JSON) y deja de existir de verdad (cierre + purga diferida).
- * <ul>
- *   <li>Export: copia completa del tenant — portabilidad (Ley 21.719) y a la vez el
- *       insumo del cierre responsable del servicio completo (falla 5.1).</li>
- *   <li>Cierre: PENDIENTE/COTIZADA se cancelan (nadie las atenderá); las CONFIRMADA
- *       (hay seña de por medio: devolver dinero es decisión humana) exigen resolución
- *       manual previa. La página pública desaparece al instante (el finder público
- *       filtra por estado ACTIVO) y las sesiones se revocan.</li>
- *   <li>La purga física diferida corre en {@link ExpiracionService#purgarTenantsCerrados()}.</li>
- * </ul>
+ * Offboarding de tenant (falla 3.3, revisión a 5 años): cierre a demanda y actualización
+ * de credenciales. El export completo vive en {@link TenantExportService}; la purga física
+ * diferida en {@link TenantPurgaJobs#purgarTenantsCerrados()}.
+ * <p>
+ * Cierre: PENDIENTE/COTIZADA se cancelan (nadie las atenderá); las CONFIRMADA (hay seña de
+ * por medio: devolver dinero es decisión humana) exigen resolución manual previa. La página
+ * pública desaparece al instante (el finder público filtra por estado ACTIVO) y las sesiones
+ * se revocan.
  */
 @Slf4j
 @Service
@@ -32,29 +29,13 @@ import java.util.List;
 public class TenantService {
 
     private final TenantRepository tenantRepository;
-    private final ServicioRepository servicioRepository;
-    private final ClienteRepository clienteRepository;
     private final BloqueDisponibleRepository bloqueRepository;
     private final ReservaRepository reservaRepository;
-    private final PagoRepository pagoRepository;
     private final UsuarioRepository usuarioRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final cl.reservakids.infrastructure.security.CredentialCipher credentialCipher;
+    private final TenantExportService tenantExportService;
     private final Clock clock;
-
-    /** Export completo del tenant. Disponible siempre, no solo al cerrar. */
-    @Transactional(readOnly = true)
-    public ExportResponse exportar(Long tenantId) {
-        Tenant tenant = buscar(tenantId);
-        return new ExportResponse(
-                tenant.getNombre(), tenant.getSlug(), tenant.getPlan(), tenant.getEstado(),
-                tenant.getCreadoEn(), tenant.getCerradoEn(), OffsetDateTime.now(clock),
-                servicioRepository.findByTenantIdOrderByNombre(tenantId).stream().map(ServicioExport::de).toList(),
-                clienteRepository.findByTenantIdOrderByNombre(tenantId).stream().map(ClienteExport::de).toList(),
-                bloqueRepository.findByTenantIdOrderByFechaAscHoraInicioAsc(tenantId).stream().map(BloqueExport::de).toList(),
-                reservaRepository.findByTenantIdOrderByCreadaEnDesc(tenantId).stream().map(ReservaExport::de).toList(),
-                pagoRepository.findDeTenant(tenantId).stream().map(PagoExport::de).toList());
-    }
 
     /**
      * Actualiza las credenciales de Mercado Pago del tenant.
@@ -108,7 +89,8 @@ public class TenantService {
         }
         log.info("Offboarding: tenant '{}' (#{}) cerrado por su dueño; {} solicitudes abiertas canceladas",
                 tenant.getSlug(), tenantId, abiertas.size());
-        return exportar(tenantId); // misma transacción: refleja el estado final
+        // Otra bean: el proxy aplica y se une a esta transacción → refleja el estado final.
+        return tenantExportService.exportar(tenantId);
     }
 
     private Tenant buscar(Long tenantId) {

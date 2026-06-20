@@ -2,6 +2,7 @@ package cl.reservakids.application;
 
 import cl.reservakids.application.dto.TenantDtos.CerrarRequest;
 import cl.reservakids.application.dto.TenantDtos.ExportResponse;
+import cl.reservakids.application.usecase.TenantExportService;
 import cl.reservakids.application.usecase.TenantService;
 import cl.reservakids.domain.model.*;
 import cl.reservakids.domain.repository.*;
@@ -15,27 +16,25 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
-/** Falla 3.3 (revisión a 5 años): offboarding de tenant — export y cierre a demanda. */
+/** Falla 3.3 (revisión a 5 años): offboarding de tenant — cierre a demanda. */
 @ExtendWith(MockitoExtension.class)
 class TenantServiceTest {
 
     @Mock TenantRepository tenantRepository;
-    @Mock ServicioRepository servicioRepository;
-    @Mock ClienteRepository clienteRepository;
     @Mock BloqueDisponibleRepository bloqueRepository;
     @Mock ReservaRepository reservaRepository;
-    @Mock PagoRepository pagoRepository;
     @Mock UsuarioRepository usuarioRepository;
     @Mock RefreshTokenRepository refreshTokenRepository;
+    @Mock TenantExportService tenantExportService;
     @Spy Clock clock = Clock.fixed(Instant.parse("2026-06-11T12:00:00Z"), ZoneOffset.UTC);
 
     @InjectMocks TenantService service;
@@ -54,7 +53,8 @@ class TenantServiceTest {
         Usuario dueno = new Usuario();
         dueno.setId(5L);
         when(usuarioRepository.findByTenantId(1L)).thenReturn(List.of(dueno));
-        exportVacio();
+        // El export final lo produce TenantExportService (otra bean, misma transacción).
+        when(tenantExportService.exportar(1L)).thenReturn(exportConEstado(Tenant.ESTADO_CERRADO));
 
         ExportResponse export = service.cerrar(1L, new CerrarRequest("fiestas-pepito"));
 
@@ -101,44 +101,6 @@ class TenantServiceTest {
                 () -> service.cerrar(1L, new CerrarRequest("fiestas-pepito")));
     }
 
-    /** Portabilidad (Ley 21.719): el export incluye todas las colecciones del tenant. */
-    @Test
-    void exportIncluyeTodasLasColecciones() {
-        Tenant tenant = tenant("fiestas-pepito");
-        when(tenantRepository.findById(1L)).thenReturn(Optional.of(tenant));
-
-        Servicio servicio = new Servicio();
-        servicio.setNombre("Cumpleaños básico");
-        servicio.setPrecioClp(50000);
-        when(servicioRepository.findByTenantIdOrderByNombre(1L)).thenReturn(List.of(servicio));
-        Cliente cliente = new Cliente();
-        cliente.setNombre("Ana");
-        cliente.setTelefono("56911111111");
-        when(clienteRepository.findByTenantIdOrderByNombre(1L)).thenReturn(List.of(cliente));
-        BloqueDisponible bloque = new BloqueDisponible();
-        bloque.setFecha(java.time.LocalDate.parse("2026-07-04"));
-        bloque.setHoraInicio(java.time.LocalTime.NOON);
-        bloque.setHoraFin(java.time.LocalTime.of(15, 0));
-        when(bloqueRepository.findByTenantIdOrderByFechaAscHoraInicioAsc(1L)).thenReturn(List.of(bloque));
-        when(reservaRepository.findByTenantIdOrderByCreadaEnDesc(1L))
-                .thenReturn(List.of(reserva(10L, EstadoReserva.REALIZADA, 20L)));
-        Pago pago = new Pago();
-        pago.setReservaId(10L);
-        pago.setMontoClp(20000);
-        pago.setMedio("TRANSFERENCIA");
-        when(pagoRepository.findDeTenant(1L)).thenReturn(List.of(pago));
-
-        ExportResponse export = service.exportar(1L);
-
-        assertEquals("fiestas-pepito", export.slug());
-        assertEquals(1, export.servicios().size());
-        assertEquals(1, export.clientes().size());
-        assertEquals(1, export.bloques().size());
-        assertEquals(1, export.reservas().size());
-        assertEquals(1, export.pagos().size());
-        assertNotNull(export.generadoEn());
-    }
-
     private Tenant tenant(String slug) {
         Tenant tenant = new Tenant();
         ReflectionTestUtils.setField(tenant, "id", 1L);
@@ -158,11 +120,9 @@ class TenantServiceTest {
         return reserva;
     }
 
-    private void exportVacio() {
-        when(servicioRepository.findByTenantIdOrderByNombre(anyLong())).thenReturn(List.of());
-        when(clienteRepository.findByTenantIdOrderByNombre(anyLong())).thenReturn(List.of());
-        when(bloqueRepository.findByTenantIdOrderByFechaAscHoraInicioAsc(anyLong())).thenReturn(List.of());
-        when(reservaRepository.findByTenantIdOrderByCreadaEnDesc(anyLong())).thenReturn(List.of());
-        when(pagoRepository.findDeTenant(anyLong())).thenReturn(List.of());
+    private ExportResponse exportConEstado(String estado) {
+        return new ExportResponse("Fiestas Pepito", "fiestas-pepito", null, estado,
+                null, null, OffsetDateTime.now(),
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 }

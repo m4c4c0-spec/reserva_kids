@@ -100,9 +100,7 @@ public class ReservaService {
         reserva.setBloqueId(req.bloqueId());
         reserva.setNumNinos(req.numNinos());
         reserva.setComuna(req.comuna());
-        reserva.setComentarios(contactoDistinto == null ? req.comentarios()
-                : "[Contacto: %s]%s".formatted(contactoDistinto,
-                        req.comentarios() == null ? "" : "\n" + req.comentarios()));
+        reserva.setComentarios(construirComentarios(contactoDistinto, req.comentarios()));
         try {
             reserva = reservaRepository.saveAndFlush(reserva);
         } catch (DataIntegrityViolationException e) {
@@ -177,6 +175,15 @@ public class ReservaService {
     /** RF-06/07: confirma la reserva (normalmente tras registrar la seña). */
     @Transactional
     public ReservaResponse confirmar(Long tenantId, Long id) {
+        return confirmarInterno(tenantId, id);
+    }
+
+    /**
+     * Cuerpo de {@link #confirmar} sin {@code @Transactional}: lo invoca también
+     * {@link #procesarWebhookPago}, que ya corre en su propia transacción. Llamarlo
+     * directo evita la auto-invocación que omitiría el proxy (Sonar S6809).
+     */
+    private ReservaResponse confirmarInterno(Long tenantId, Long id) {
         Reserva reserva = buscar(tenantId, id);
         reserva.transicionarA(EstadoReserva.CONFIRMADA);
         bloqueRepository.transicionarEstado(
@@ -214,6 +221,15 @@ public class ReservaService {
     /** RF-07: registro de seña/abono (o devolución) y saldo pendiente. */
     @Transactional
     public ReservaResponse registrarPago(Long tenantId, Long usuarioId, Long id, PagoRequest req) {
+        return registrarPagoInterno(tenantId, usuarioId, id, req);
+    }
+
+    /**
+     * Cuerpo de {@link #registrarPago} sin {@code @Transactional}: lo invoca también
+     * {@link #procesarWebhookPago}, que ya corre en su propia transacción. Llamarlo
+     * directo evita la auto-invocación que omitiría el proxy (Sonar S6809).
+     */
+    private ReservaResponse registrarPagoInterno(Long tenantId, Long usuarioId, Long id, PagoRequest req) {
         Reserva reserva = buscar(tenantId, id);
         boolean devolucion = Pago.TIPO_DEVOLUCION.equals(req.tipo());
         // Abonos solo en reservas activas; devoluciones también tras una cancelación
@@ -254,7 +270,7 @@ public class ReservaService {
             // PagoRequest(montoClp, medio, comprobanteUrl, tipo, referenciaExterna) —
             // el orden importa: antes se registraba medio="ABONO" y tipo=null.
             PagoRequest req = new PagoRequest(montoPagado, "MERCADOPAGO", null, Pago.TIPO_ABONO, paymentId);
-            registrarPago(tenantId, null, reservaId, req);
+            registrarPagoInterno(tenantId, null, reservaId, req);
 
             // El pago aprobado confirma tanto la cotización de cumpleaños (COTIZADA) como la
             // cita por hora (PENDIENTE_PAGO → CONFIRMADA = "pago = agendado"). confirmar() hace
@@ -265,7 +281,7 @@ public class ReservaService {
             if (reserva.getEstado() == EstadoReserva.COTIZADA
                     || reserva.getEstado() == EstadoReserva.PENDIENTE_PAGO) {
                 boolean esCita = reserva.getInicio() != null; // cita por hora (no cumpleaños)
-                confirmar(tenantId, reservaId);
+                confirmarInterno(tenantId, reservaId);
                 if (esCita) {
                     notificarCitaConfirmada(reserva);
                 }
@@ -286,6 +302,15 @@ public class ReservaService {
         List<ReservaServicio> servicios = reservaServicioRepository.findByReservaIdOrderById(cita.getId());
         notificacion.citaConfirmada(tenant, cita, cliente, servicios);
         whatsapp.confirmacionCita(tenant, cita, cliente, servicios);
+    }
+
+    /** Antepone el contacto alternativo (si lo hay) a los comentarios del cliente. */
+    private static String construirComentarios(String contactoDistinto, String comentarios) {
+        if (contactoDistinto == null) {
+            return comentarios;
+        }
+        String extra = comentarios == null ? "" : "\n" + comentarios;
+        return "[Contacto: %s]%s".formatted(contactoDistinto, extra);
     }
 
     private Reserva buscar(Long tenantId, Long id) {

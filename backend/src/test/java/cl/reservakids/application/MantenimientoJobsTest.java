@@ -1,6 +1,9 @@
 package cl.reservakids.application;
 
-import cl.reservakids.application.usecase.MantenimientoJobs;
+import cl.reservakids.application.usecase.BloqueMantenimientoJobs;
+import cl.reservakids.application.usecase.ClienteRetencionJobs;
+import cl.reservakids.application.usecase.TenantPurgaJobs;
+import cl.reservakids.application.usecase.TokenMantenimientoJobs;
 import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.EstadoBloque;
 import cl.reservakids.domain.model.EstadoReserva;
@@ -35,6 +38,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+/**
+ * Jobs de mantenimiento, ya descompuestos por concern: tokens, retención de clientes,
+ * bloques y purga de tenants. Un único test de Mockito inyecta los mocks compartidos en
+ * cada job y verifica su comportamiento de forma independiente.
+ */
 @ExtendWith(MockitoExtension.class)
 class MantenimientoJobsTest {
 
@@ -50,14 +58,17 @@ class MantenimientoJobsTest {
     @Mock PasswordResetTokenRepository passwordResetTokenRepository;
     @Spy Clock clock = Clock.fixed(Instant.parse("2026-06-10T12:00:00Z"), ZoneOffset.UTC);
 
-    @InjectMocks MantenimientoJobs jobs;
+    @InjectMocks TokenMantenimientoJobs tokenJobs;
+    @InjectMocks ClienteRetencionJobs clienteJobs;
+    @InjectMocks BloqueMantenimientoJobs bloqueJobs;
+    @InjectMocks TenantPurgaJobs tenantPurgaJobs;
 
     @Test
     void purgaRefreshTokensInvalidos() {
         when(refreshTokenRepository.purgarInvalidos(any())).thenReturn(12);
         when(refreshTokenClienteRepository.purgarInvalidos(any())).thenReturn(5);
 
-        jobs.purgarRefreshTokens();
+        tokenJobs.purgarRefreshTokens();
 
         verify(refreshTokenRepository).purgarInvalidos(any());
         verify(refreshTokenClienteRepository).purgarInvalidos(any());
@@ -68,7 +79,7 @@ class MantenimientoJobsTest {
     /** Falla #4 (revisión 2 años, Ley 21.719): anonimiza inactivos, respeta a quien tenga reservas activas. */
     @Test
     void anonimizaInactivosSinReservasActivas() {
-        ReflectionTestUtils.setField(jobs, "retencionClienteMeses", 24L);
+        ReflectionTestUtils.setField(clienteJobs, "retencionClienteMeses", 24L);
 
         Cliente inactivo = clienteConId(30L);
         Cliente conReservaActiva = clienteConId(31L);
@@ -77,7 +88,7 @@ class MantenimientoJobsTest {
         when(reservaRepository.existsByClienteIdAndEstadoIn(30L, EstadoReserva.ACTIVOS)).thenReturn(false);
         when(reservaRepository.existsByClienteIdAndEstadoIn(31L, EstadoReserva.ACTIVOS)).thenReturn(true);
 
-        jobs.anonimizarInactivos();
+        clienteJobs.anonimizarInactivos();
 
         assertTrue(inactivo.isAnonimizado());
         assertEquals(Cliente.NOMBRE_ANONIMO, inactivo.getNombre());
@@ -95,7 +106,7 @@ class MantenimientoJobsTest {
         when(bloqueRepository.eliminarPasadosSinReserva(LocalDate.parse("2026-06-10"), EstadoBloque.DISPONIBLE))
                 .thenReturn(3);
 
-        jobs.limpiarBloquesPasados();
+        bloqueJobs.limpiarBloquesPasados();
 
         verify(bloqueRepository).eliminarPasadosSinReserva(LocalDate.parse("2026-06-10"), EstadoBloque.DISPONIBLE);
     }
@@ -103,7 +114,7 @@ class MantenimientoJobsTest {
     /** Falla 3.3 (revisión 5 años): un tenant cerrado hace > N días se purga FÍSICAMENTE entero. */
     @Test
     void purgaTenantsCerradosVencidaLaVentanaDeGracia() {
-        ReflectionTestUtils.setField(jobs, "purgaDiasTrasCierre", 90L);
+        ReflectionTestUtils.setField(tenantPurgaJobs, "purgaDiasTrasCierre", 90L);
 
         Tenant cerrado = new Tenant();
         ReflectionTestUtils.setField(cerrado, "id", 7L);
@@ -112,7 +123,7 @@ class MantenimientoJobsTest {
         when(tenantRepository.findByEstadoAndCerradoEnBefore(eq(Tenant.ESTADO_CERRADO), any()))
                 .thenReturn(List.of(cerrado));
 
-        jobs.purgarTenantsCerrados();
+        tenantPurgaJobs.purgarTenantsCerrados();
 
         // Orden FK: pago → reserva → bloque/cliente/servicio → tokens → usuario → tenant
         var orden = inOrder(pagoRepository, reservaRepository, bloqueRepository,
@@ -132,10 +143,10 @@ class MantenimientoJobsTest {
     /** Idempotencia (falla 4.4): sin tenants vencidos, la pasada no borra nada. */
     @Test
     void purgaNoTocaNadaSinTenantsVencidos() {
-        ReflectionTestUtils.setField(jobs, "purgaDiasTrasCierre", 90L);
+        ReflectionTestUtils.setField(tenantPurgaJobs, "purgaDiasTrasCierre", 90L);
         when(tenantRepository.findByEstadoAndCerradoEnBefore(any(), any())).thenReturn(List.of());
 
-        jobs.purgarTenantsCerrados();
+        tenantPurgaJobs.purgarTenantsCerrados();
 
         verifyNoInteractions(pagoRepository, servicioRepository, usuarioRepository);
         verify(tenantRepository, never()).delete(any());

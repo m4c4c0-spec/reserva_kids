@@ -45,9 +45,7 @@ public class ClienteAuthController {
     public ClienteTokenResponse refresh(@CookieValue(name = RefreshCookieService.COOKIE_CLIENTE, required = false) String cookieRefresh,
                                         @RequestBody(required = false) AuthDtos.RefreshRequest req,
                                         HttpServletResponse res) {
-        String refresh = cookieRefresh != null && !cookieRefresh.isBlank()
-                ? cookieRefresh
-                : (req != null ? req.refreshToken() : null);
+        String refresh = resolverRefresh(cookieRefresh, req);
         if (refresh == null || refresh.isBlank()) {
             throw new org.springframework.security.authentication.BadCredentialsException(
                     "Refresh token inválido o expirado");
@@ -66,12 +64,18 @@ public class ClienteAuthController {
                                        @CookieValue(name = RefreshCookieService.COOKIE_CLIENTE, required = false) String cookieRefresh,
                                        @RequestBody(required = false) AuthDtos.RefreshRequest req,
                                        HttpServletResponse res) {
-        String refresh = cookieRefresh != null && !cookieRefresh.isBlank()
-                ? cookieRefresh
-                : (req != null ? req.refreshToken() : null);
+        String refresh = resolverRefresh(cookieRefresh, req);
         clienteAuthService.logout(principal == null ? null : principal.usuarioId(), refresh);
         refreshCookieService.borrar(res, RefreshCookieService.COOKIE_CLIENTE);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Refresh token: prioriza la cookie HttpOnly; cae al body para clientes no-navegador. */
+    private static String resolverRefresh(String cookieRefresh, AuthDtos.RefreshRequest req) {
+        if (cookieRefresh != null && !cookieRefresh.isBlank()) {
+            return cookieRefresh;
+        }
+        return req != null ? req.refreshToken() : null;
     }
 
     /** El refresh token vive solo en la cookie HttpOnly; el body no lo expone. */

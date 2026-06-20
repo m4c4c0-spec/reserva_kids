@@ -2,6 +2,7 @@ package cl.reservakids.infrastructure.web;
 
 import cl.reservakids.application.dto.TenantDtos.CerrarRequest;
 import cl.reservakids.application.dto.TenantDtos.ExportResponse;
+import cl.reservakids.application.usecase.TenantExportService;
 import cl.reservakids.application.usecase.TenantService;
 import cl.reservakids.infrastructure.security.AuthPrincipal;
 import jakarta.validation.Valid;
@@ -20,10 +21,11 @@ import org.springframework.web.bind.annotation.*;
 public class TenantController {
 
     private final TenantService tenantService;
+    private final TenantExportService tenantExportService;
 
     @GetMapping("/export")
     public ExportResponse exportar(@AuthenticationPrincipal AuthPrincipal principal) {
-        return tenantService.exportar(principal.tenantId());
+        return tenantExportService.exportar(principal.tenantId());
     }
 
     @PutMapping("/configuracion")
