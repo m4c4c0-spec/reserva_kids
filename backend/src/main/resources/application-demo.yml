@@ -1,0 +1,24 @@
+# Perfil "demo": despliegue público gratuito (Google Cloud Run + Neon Postgres).
+#
+# Solo fija la postura NO secreta de una demo pública. Los secretos y las URLs
+# siguen llegando por variables de entorno del orquestador (Cloud Run --env-vars-file):
+#   DB_URL · DB_USER · DB_PASSWORD · JWT_SECRET
+#   CORS_ALLOWED_ORIGINS · FRONTEND_URL · API_URL
+# Ver backend/deploy/cloudrun.env.example.yaml.
+spring:
+  mail:
+    # Demo sin SMTP real → NotificacionAdapter degrada a log (no se envía nada a internet).
+    host: ""
+  jpa:
+    # El esquema lo gobierna Flyway; en demo solo validamos contra Neon (nunca create/update).
+    hibernate:
+      ddl-auto: validate
+
+app:
+  whatsapp:
+    # Stub: los mensajes solo se loguean (sin proveedor real en la demo).
+    enabled: false
+  cookies:
+    # Cloud Run sirve HTTPS de extremo a extremo → la cookie de refresh va Secure.
+    secure: true
+    same-site: Lax
