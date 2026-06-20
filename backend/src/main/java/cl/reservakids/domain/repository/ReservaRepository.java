@@ -96,4 +96,13 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     @Modifying
     @Query("DELETE FROM Reserva r WHERE r.tenantId = :tenantId")
     int eliminarDeTenant(@Param("tenantId") Long tenantId);
+
+    // ── Historial de reservas del cliente autenticado (Sprint 2 §2.2) ──
+
+    /** Citas agendadas por una cuenta de cliente (apoderado), todas las que hizo en cualquier negocio. */
+    Page<Reserva> findByCuentaClienteIdOrderByCreadaEnDesc(Long cuentaClienteId, Pageable pageable);
+
+    /** Ídem con filtro por estado (pestaña "Pendientes", "Confirmadas", etc.). */
+    Page<Reserva> findByCuentaClienteIdAndEstadoOrderByCreadaEnDesc(
+            Long cuentaClienteId, EstadoReserva estado, Pageable pageable);
 }
