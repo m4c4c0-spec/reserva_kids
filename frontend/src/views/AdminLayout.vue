@@ -5,7 +5,10 @@ import { useAdminAuthStore } from '../stores/adminAuth'
 const router = useRouter()
 const auth = useAdminAuthStore()
 
-const tabs = [{ to: '/admin/negocios', label: 'Negocios', icon: 'storefront' }]
+const tabs = [
+  { to: '/admin/metricas', label: 'Métricas', icon: 'monitoring' },
+  { to: '/admin/negocios', label: 'Negocios', icon: 'storefront' },
+]
 
 async function salir() {
   await auth.logout()
