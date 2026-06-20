@@ -5,9 +5,12 @@ import { useClienteAuthStore } from '../stores/clienteAuth'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/login' },
-    { path: '/login', component: () => import('../views/LoginView.vue') },
-    // Falla 1.3 (5 años): reset de contraseña — "reset" está en SLUGS_RESERVADOS del backend
+    { path: '/', component: () => import('../views/LandingPageView.vue') },
+    {
+      path: '/login',
+      component: () => import('../views/LoginView.vue'),
+      meta: { soloInvitados: 'dueno' },
+    },
     { path: '/reset', component: () => import('../views/ResetPasswordView.vue') },
     {
       path: '/panel',
@@ -21,22 +24,53 @@ const router = createRouter({
         { path: 'configuracion', component: () => import('../views/ConfiguracionView.vue') },
       ],
     },
-    // Área de cliente (apoderado): login propio + directorio de negocios con disponibilidad.
-    // Deben ir ANTES del catch-all /:slug para que "clientes" no se interprete como un slug.
-    { path: '/clientes/entrar', component: () => import('../views/ClienteLoginView.vue') },
-    // Falla 1.3 (5 años): página legal de privacidad — también en SLUGS_RESERVADOS del backend
+    {
+      path: '/clientes/entrar',
+      component: () => import('../views/ClienteLoginView.vue'),
+      meta: { soloInvitados: 'cliente' },
+    },
     { path: '/privacidad', component: () => import('../views/PrivacidadView.vue') },
     { path: '/clientes', component: () => import('../views/ClienteHomeView.vue'), meta: { requiereCliente: true } },
-    { path: '/clientes/negocios', component: () => import('../views/DirectorioView.vue'), meta: { requiereCliente: true } },
-    { path: '/clientes/agendar/:slug', component: () => import('../views/AgendarView.vue'), meta: { requiereCliente: true } },
-    // Mini-sitio público del negocio (RF-03): reservakids.cl/{slug}
+    {
+      path: '/clientes/negocios',
+      component: () => import('../views/DirectorioView.vue'),
+      meta: { requiereCliente: true },
+    },
+    {
+      path: '/clientes/reservas',
+      component: () => import('../views/ClienteHistorialView.vue'),
+      meta: { requiereCliente: true },
+    },
+    {
+      path: '/clientes/agendar/:slug',
+      component: () => import('../views/AgendarView.vue'),
+      meta: { requiereCliente: true },
+    },
+    { path: '/clientes/reset', component: () => import('../views/ClienteResetView.vue') },
+    { path: '/clientes/reset/confirmar', component: () => import('../views/ClienteResetConfirmView.vue') },
+    { path: '/404', component: () => import('../views/NotFoundView.vue') },
+    // Página pública de cada negocio: ruta dedicada con :slug param explícito.
+    // Debe ir ANTES del catch-all para que route.params.slug esté definido
+    // (la catch-all exponeroute.params.pathMatch, no slug).
     { path: '/:slug', component: () => import('../views/PublicSiteView.vue') },
+    // Catch-all: lo que no matchea nada (incluida la ruta /:slug si el catalogo
+    // responde noExiste) caer al 404 dedicado en vez de a PublicSiteView.
+    { path: '/:pathMatch(.*)*', redirect: '/404' },
   ],
 })
 
 router.beforeEach((to) => {
-  if (to.meta.requiereAuth && !useAuthStore().autenticado) return '/login'
-  if (to.meta.requiereCliente && !useClienteAuthStore().autenticado) return '/clientes/entrar'
+  const auth = useAuthStore()
+  const clienteAuth = useClienteAuthStore()
+
+  // Rutas protegidas: requieren sesión activa.
+  if (to.meta.requiereAuth && !auth.autenticado) return '/login'
+  if (to.meta.requiereCliente && !clienteAuth.autenticado) return '/clientes/entrar'
+
+  // Rutas "solo invitados": si ya tiene sesión, lo mandamos a su panel en vez
+  // de mostrarle de nuevo el formulario de login (UX + evita dobles sesiones).
+  if (to.meta.soloInvitados === 'dueno' && auth.autenticado) return '/panel'
+  if (to.meta.soloInvitados === 'cliente' && clienteAuth.autenticado) return '/clientes'
 })
 
 export default router

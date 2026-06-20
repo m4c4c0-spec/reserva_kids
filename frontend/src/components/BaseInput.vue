@@ -1,14 +1,14 @@
 <script setup>
-const props = defineProps({
-  modeloValue: { type: [String, Number], default: '' },
+defineProps({
+  modelValue: { type: [String, Number], default: '' },
   tipo: { type: String, default: 'text' },
   placeholder: { type: String, default: '' },
   icono: { type: String, default: '' },
   requerido: { type: Boolean, default: false },
-  deshabilitado: { type: Boolean, default: false }
+  deshabilitado: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:modeloValue'])
+const emit = defineEmits(['update:modelValue'])
 </script>
 
 <template>
@@ -21,13 +21,13 @@ const emit = defineEmits(['update:modeloValue'])
     </span>
     <input
       :type="tipo"
-      :value="modeloValue"
+      :value="modelValue"
       :placeholder="placeholder"
       :required="requerido"
       :disabled="deshabilitado"
-      @input="emit('update:modeloValue', $event.target.value)"
       class="w-full border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:border-secondary focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       :class="icono ? 'pl-11' : ''"
+      @input="emit('update:modelValue', $event.target.value)"
     />
   </div>
 </template>
