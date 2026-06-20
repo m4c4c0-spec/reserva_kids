@@ -1,5 +1,6 @@
 package cl.reservakids.infrastructure.adapter;
 
+import cl.reservakids.domain.exception.PasarelaPagoException;
 import cl.reservakids.domain.model.Reserva;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.PasarelaPagoPort;
@@ -84,7 +85,7 @@ public class MercadoPagoAdapter implements PasarelaPagoPort {
 
         } catch (Exception e) {
             log.error("Error al crear preferencia en Mercado Pago para tenant {}: {}", tenant.getSlug(), e.getMessage());
-            throw new RuntimeException("Error al comunicarse con Mercado Pago", e);
+            throw new PasarelaPagoException("Error al comunicarse con Mercado Pago", e);
         }
     }
 }

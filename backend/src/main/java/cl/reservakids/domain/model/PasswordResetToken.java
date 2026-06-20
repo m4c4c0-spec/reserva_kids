@@ -26,8 +26,11 @@ public class PasswordResetToken {
     @Id
     private UUID id;
 
-    @Column(name = "usuario_id", nullable = false)
+    @Column(name = "usuario_id")
     private Long usuarioId;
+
+    @Column(name = "cuenta_cliente_id")
+    private Long cuentaClienteId;
 
     @Column(name = "token_hash", nullable = false, unique = true)
     private String tokenHash;

@@ -1,7 +1,7 @@
 <script setup>
 defineProps({
   mensaje: { type: String, required: true },
-  icono: { type: String, default: 'inbox' }
+  icono: { type: String, default: 'inbox' },
 })
 </script>
 

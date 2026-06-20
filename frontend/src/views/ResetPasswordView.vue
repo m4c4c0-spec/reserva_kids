@@ -48,55 +48,96 @@ async function confirmar() {
 </script>
 
 <template>
-  <main class="min-h-screen bg-surface bg-cover bg-center flex flex-col justify-center items-center p-5 relative overflow-hidden"
-        :style="{ backgroundImage: `url(${bgV2})` }">
-
+  <main
+    class="min-h-screen bg-surface bg-cover bg-center flex flex-col justify-center items-center p-5 relative overflow-hidden"
+    :style="{ backgroundImage: `url(${bgV2})` }"
+  >
     <div class="w-full max-w-md relative z-10">
       <div class="text-center mb-8">
         <div class="flex justify-center mb-4 h-28">
-          <img :src="charHat" alt="" class="w-28 h-28 object-contain drop-shadow-xl character-img animate-floating" aria-hidden="true" />
+          <img
+            :src="charHat"
+            alt=""
+            class="w-28 h-28 object-contain drop-shadow-xl character-img animate-floating"
+            aria-hidden="true"
+          />
         </div>
         <h1 class="font-display font-extrabold text-3xl tracking-tight text-primary">Recuperar contraseña</h1>
       </div>
 
       <div class="glass-card rounded-3xl p-6 shadow-soft space-y-4">
         <!-- Paso 2: con token en la URL -->
-        <form v-if="token" @submit.prevent="confirmar" class="space-y-4">
+        <form v-if="token" class="space-y-4" @submit.prevent="confirmar">
           <p class="font-medium text-on-surface-variant text-center">Escribe tu contraseña nueva.</p>
           <div class="relative">
-            <span class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none">lock_reset</span>
-            <input v-model="password" type="password" required minlength="8" placeholder="Contraseña nueva (mín. 8)"
-                   class="block w-full pl-11 pr-3 py-3 border-2 border-surface-highest rounded-xl bg-surface placeholder-outline font-medium focus:outline-none focus:border-secondary transition-colors duration-200" />
+            <span
+              class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none"
+              >lock_reset</span
+            >
+            <input
+              v-model="password"
+              type="password"
+              required
+              minlength="8"
+              placeholder="Contraseña nueva (mín. 8)"
+              class="input-festivo input-festivo--con-icono !py-3"
+            />
           </div>
           <ErrorBanner :mensaje="error" />
-          <BaseButton variante="primario" type="submit" :cargando="cargando" :deshabilitado="cargando" class="w-full py-3">
+          <BaseButton
+            variante="primario"
+            type="submit"
+            :cargando="cargando"
+            :deshabilitado="cargando"
+            class="w-full py-3"
+          >
             {{ cargando ? 'Guardando…' : 'Guardar contraseña' }}
           </BaseButton>
         </form>
 
         <!-- Paso 1: pedir el enlace por email -->
         <template v-else>
-          <p v-if="enviado" class="text-sm font-semibold text-on-secondary-container bg-secondary-fixed rounded-xl px-3 py-2 text-center">
-            Si el correo existe, te enviamos un enlace para crear una contraseña nueva.
-            Revisa tu bandeja (vence en 30 minutos).
+          <p
+            v-if="enviado"
+            class="text-sm font-semibold text-on-secondary-container bg-secondary-fixed rounded-xl px-3 py-2 text-center"
+          >
+            Si el correo existe, te enviamos un enlace para crear una contraseña nueva. Revisa tu bandeja (vence en 30
+            minutos).
           </p>
-          <form v-else @submit.prevent="solicitar" class="space-y-4">
+          <form v-else class="space-y-4" @submit.prevent="solicitar">
             <p class="font-medium text-on-surface-variant text-center">
               Te enviaremos un enlace al correo de tu cuenta.
             </p>
             <div class="relative">
-              <span class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none">mail</span>
-              <input v-model="email" type="email" required placeholder="Email de tu cuenta"
-                     class="block w-full pl-11 pr-3 py-3 border-2 border-surface-highest rounded-xl bg-surface placeholder-outline font-medium focus:outline-none focus:border-secondary transition-colors duration-200" />
+              <span
+                class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none"
+                >mail</span
+              >
+              <input
+                v-model="email"
+                type="email"
+                required
+                placeholder="Email de tu cuenta"
+                class="input-festivo input-festivo--con-icono !py-3"
+              />
             </div>
             <ErrorBanner :mensaje="error" />
-            <BaseButton variante="primario" type="submit" :cargando="cargando" :deshabilitado="cargando" class="w-full py-3">
+            <BaseButton
+              variante="primario"
+              type="submit"
+              :cargando="cargando"
+              :deshabilitado="cargando"
+              class="w-full py-3"
+            >
               {{ cargando ? 'Enviando…' : 'Enviar enlace' }}
             </BaseButton>
           </form>
         </template>
 
-        <RouterLink to="/login" class="block w-full font-medium text-primary hover:text-primary-container text-center transition-colors">
+        <RouterLink
+          to="/login"
+          class="block w-full font-medium text-primary hover:text-primary-container text-center transition-colors"
+        >
           Volver al inicio de sesión
         </RouterLink>
       </div>

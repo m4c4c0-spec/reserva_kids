@@ -31,7 +31,7 @@ public class Cliente {
         if (raw == null) {
             return null;
         }
-        String digitos = raw.replaceAll("[^0-9]", "");
+        String digitos = raw.replaceAll("\\D", "");
         if (digitos.startsWith("00")) {
             digitos = digitos.substring(2); // prefijo internacional 00 (fix #8: 0056... → 56...)
         }

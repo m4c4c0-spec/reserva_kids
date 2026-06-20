@@ -29,13 +29,9 @@ function alternar(id) {
   s.has(id) ? s.delete(id) : s.add(id)
   seleccionadas.value = s
 }
-const serviciosSel = computed(() =>
-  (negocio.value?.servicios || []).filter((s) => seleccionadas.value.has(s.id))
-)
+const serviciosSel = computed(() => (negocio.value?.servicios || []).filter((s) => seleccionadas.value.has(s.id)))
 const totalClp = computed(() => serviciosSel.value.reduce((acc, s) => acc + (s.precioClp || 0), 0))
-const duracionTotalMin = computed(() =>
-  serviciosSel.value.reduce((acc, s) => acc + (s.duracionMin || 0), 0)
-)
+const duracionTotalMin = computed(() => serviciosSel.value.reduce((acc, s) => acc + (s.duracionMin || 0), 0))
 
 const hoyStr = (() => {
   const d = new Date()
@@ -62,12 +58,16 @@ async function cargarHoras() {
   }
 }
 
-watch(fecha, () => { if (paso.value === 2) cargarHoras() })
+watch(fecha, () => {
+  if (paso.value === 2) cargarHoras()
+})
 
 const fechaLarga = computed(() =>
   new Date(`${fecha.value}T00:00:00`).toLocaleDateString('es-CL', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  })
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }),
 )
 
 function aServicios() {
@@ -128,12 +128,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="min-h-screen bg-surface bg-cover bg-center bg-fixed pb-32"
-        :style="{ backgroundImage: `url(${bgV2})` }">
+  <main class="min-h-screen bg-surface bg-cover bg-center bg-fixed pb-32" :style="{ backgroundImage: `url(${bgV2})` }">
     <div class="max-w-2xl mx-auto p-5 space-y-6">
       <header class="flex items-center justify-between pt-6">
-        <button @click="router.push('/clientes/negocios')"
-                class="flex items-center gap-1 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors">
+        <button
+          class="flex items-center gap-1 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors"
+          @click="router.push('/clientes/negocios')"
+        >
           <span class="material-symbols-outlined text-[20px]">arrow_back</span> Negocios
         </button>
         <p class="text-sm font-bold text-on-surface-variant truncate">{{ negocio?.nombre }}</p>
@@ -142,10 +143,18 @@ onMounted(async () => {
       <!-- Indicador de pasos -->
       <ol class="flex items-center justify-center gap-2">
         <li v-for="(p, i) in pasos" :key="p" class="flex items-center gap-2">
-          <span class="flex items-center gap-1.5 text-xs font-bold"
-                :class="paso === i + 1 ? 'text-primary' : 'text-on-surface-variant/60'">
-            <span class="w-6 h-6 rounded-full flex items-center justify-center text-[11px]"
-                  :class="paso >= i + 1 ? 'bg-primary-container text-on-primary-container' : 'bg-surface-highest text-on-surface-variant'">
+          <span
+            class="flex items-center gap-1.5 text-xs font-bold"
+            :class="paso === i + 1 ? 'text-primary' : 'text-on-surface-variant/60'"
+          >
+            <span
+              class="w-6 h-6 rounded-full flex items-center justify-center text-[11px]"
+              :class="
+                paso >= i + 1
+                  ? 'bg-primary-container text-on-primary-container'
+                  : 'bg-surface-highest text-on-surface-variant'
+              "
+            >
               {{ i + 1 }}
             </span>
             <span class="hidden sm:inline">{{ p }}</span>
@@ -157,7 +166,12 @@ onMounted(async () => {
       <LoadingSpinner v-if="cargando" mensaje="Cargando servicios…" />
 
       <div v-else-if="noExiste" class="text-center bg-surface-container rounded-3xl px-5 py-10">
-        <img :src="charCake" alt="" class="w-24 h-24 object-contain mx-auto drop-shadow-xl character-img" aria-hidden="true" />
+        <img
+          :src="charCake"
+          alt=""
+          class="w-24 h-24 object-contain mx-auto drop-shadow-xl character-img"
+          aria-hidden="true"
+        />
         <p class="font-display font-bold text-on-surface mt-2">Este negocio no está disponible</p>
       </div>
 
@@ -165,16 +179,27 @@ onMounted(async () => {
       <template v-else-if="paso === 1">
         <div>
           <h1 class="font-display font-extrabold text-2xl text-primary tracking-tight">Elige tus servicios</h1>
-          <p class="font-medium text-on-surface-variant text-sm mt-0.5">Puedes combinar varios; sumamos precio y duración.</p>
+          <p class="font-medium text-on-surface-variant text-sm mt-0.5">
+            Puedes combinar varios; sumamos precio y duración.
+          </p>
         </div>
 
         <ul v-if="negocio?.servicios?.length" class="space-y-3">
           <li v-for="s in negocio.servicios" :key="s.id">
-            <button type="button" @click="alternar(s.id)"
-                    class="w-full text-left bg-surface-lowest rounded-2xl border-2 p-4 transition-all flex items-start gap-3"
-                    :class="seleccionadas.has(s.id) ? 'border-primary shadow-lifted' : 'border-outline-variant/20 hover:border-secondary/50'">
-              <span class="material-symbols-outlined mt-0.5 shrink-0"
-                    :class="seleccionadas.has(s.id) ? 'text-primary' : 'text-on-surface-variant/40'">
+            <button
+              type="button"
+              class="w-full text-left bg-surface-lowest rounded-2xl border-2 p-4 transition-all flex items-start gap-3"
+              :class="
+                seleccionadas.has(s.id)
+                  ? 'border-primary shadow-lifted'
+                  : 'border-outline-variant/20 hover:border-secondary/50'
+              "
+              @click="alternar(s.id)"
+            >
+              <span
+                class="material-symbols-outlined mt-0.5 shrink-0"
+                :class="seleccionadas.has(s.id) ? 'text-primary' : 'text-on-surface-variant/40'"
+              >
                 {{ seleccionadas.has(s.id) ? 'check_circle' : 'radio_button_unchecked' }}
               </span>
               <div class="min-w-0 flex-1">
@@ -182,7 +207,9 @@ onMounted(async () => {
                   <h2 class="font-display font-bold text-on-surface truncate">{{ s.nombre }}</h2>
                   <span class="font-bold text-primary whitespace-nowrap">{{ clp(s.precioClp) }}</span>
                 </div>
-                <p v-if="s.descripcion" class="text-sm text-on-surface-variant mt-0.5 line-clamp-2">{{ s.descripcion }}</p>
+                <p v-if="s.descripcion" class="text-sm text-on-surface-variant mt-0.5 line-clamp-2">
+                  {{ s.descripcion }}
+                </p>
                 <span class="inline-flex items-center gap-1 text-xs font-bold text-on-surface-variant mt-1">
                   <span class="material-symbols-outlined text-[15px]">schedule</span> {{ duracion(s.duracionMin) }}
                 </span>
@@ -205,10 +232,9 @@ onMounted(async () => {
           </p>
         </div>
 
-        <div class="bg-surface-lowest rounded-2xl border border-outline-variant/20 p-4">
+        <div class="card-festiva !rounded-2xl !p-4">
           <label class="block text-sm font-bold text-on-surface mb-1" for="fecha">Día</label>
-          <input id="fecha" v-model="fecha" type="date" :min="hoyStr"
-                 class="block w-full px-3 py-3 border-2 border-surface-highest rounded-xl bg-surface font-medium focus:outline-none focus:border-secondary transition-colors" />
+          <input id="fecha" v-model="fecha" type="date" :min="hoyStr" class="input-festivo !py-3" />
           <p class="text-xs font-medium text-on-surface-variant mt-1 capitalize">{{ fechaLarga }}</p>
         </div>
 
@@ -217,9 +243,18 @@ onMounted(async () => {
           <ErrorBanner v-else-if="errorHoras" :mensaje="errorHoras" />
 
           <div v-else-if="horas.length" class="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            <button v-for="h in horas" :key="h" type="button" @click="horaSel = h"
-                    class="py-2.5 rounded-xl border-2 font-bold text-sm transition-all"
-                    :class="horaSel === h ? 'border-primary bg-primary-container text-on-primary-container shadow-md' : 'border-outline-variant/20 bg-surface-lowest text-on-surface hover:border-secondary/50'">
+            <button
+              v-for="h in horas"
+              :key="h"
+              type="button"
+              class="py-2.5 rounded-xl border-2 font-bold text-sm transition-all"
+              :class="
+                horaSel === h
+                  ? 'border-primary bg-primary-container text-on-primary-container shadow-md'
+                  : 'border-outline-variant/20 bg-surface-lowest text-on-surface hover:border-secondary/50'
+              "
+              @click="horaSel = h"
+            >
               {{ h }}
             </button>
           </div>
@@ -239,14 +274,16 @@ onMounted(async () => {
           <p class="font-medium text-on-surface-variant text-sm mt-0.5">Tu hora se confirma al aprobarse el pago.</p>
         </div>
 
-        <div class="bg-surface-lowest rounded-2xl border border-outline-variant/20 p-5 space-y-3">
+        <div class="card-festiva !rounded-2xl space-y-3">
           <div class="flex items-center gap-2 text-on-surface font-bold">
             <span class="material-symbols-outlined text-primary">event</span>
             <span class="capitalize">{{ fechaLarga }} · {{ horaSel }}</span>
           </div>
           <ul class="divide-y divide-outline-variant/15">
             <li v-for="s in serviciosSel" :key="s.id" class="flex justify-between py-2 text-sm">
-              <span class="text-on-surface">{{ s.nombre }} <span class="text-on-surface-variant">· {{ duracion(s.duracionMin) }}</span></span>
+              <span class="text-on-surface"
+                >{{ s.nombre }} <span class="text-on-surface-variant">· {{ duracion(s.duracionMin) }}</span></span
+              >
               <span class="font-bold text-on-surface">{{ clp(s.precioClp) }}</span>
             </li>
           </ul>
@@ -259,11 +296,20 @@ onMounted(async () => {
         <ErrorBanner :mensaje="errorPago" />
 
         <div class="flex items-center gap-3">
-          <button @click="paso = 2" :disabled="agendando"
-                  class="py-3 px-4 rounded-full font-bold text-on-surface-variant hover:text-primary transition-colors disabled:opacity-40">
+          <button
+            :disabled="agendando"
+            class="py-3 px-4 rounded-full font-bold text-on-surface-variant hover:text-primary transition-colors disabled:opacity-40"
+            @click="paso = 2"
+          >
             Atrás
           </button>
-          <BaseButton variante="primario" @click="pagar" :cargando="agendando" :deshabilitado="agendando" class="flex-1 py-3.5">
+          <BaseButton
+            variante="primario"
+            :cargando="agendando"
+            :deshabilitado="agendando"
+            class="flex-1 py-3.5"
+            @click="pagar"
+          >
             <span class="material-symbols-outlined mr-2 text-[20px]">lock</span>
             {{ agendando ? 'Redirigiendo…' : `Pagar ${clp(totalClp)}` }}
           </BaseButton>
@@ -272,8 +318,10 @@ onMounted(async () => {
     </div>
 
     <!-- Barra inferior: resumen + acción del paso -->
-    <footer v-if="(paso === 1 || paso === 2) && !cargando && !noExiste"
-            class="fixed bottom-0 inset-x-0 bg-surface-lowest/95 backdrop-blur border-t border-outline-variant/20 shadow-lifted">
+    <footer
+      v-if="(paso === 1 || paso === 2) && !cargando && !noExiste"
+      class="fixed bottom-0 inset-x-0 bg-surface-lowest/95 backdrop-blur border-t border-outline-variant/20 shadow-lifted"
+    >
       <div class="max-w-2xl mx-auto p-4 flex items-center justify-between gap-4">
         <div>
           <p class="font-extrabold text-lg text-primary leading-tight">{{ clp(totalClp) }}</p>
@@ -285,14 +333,23 @@ onMounted(async () => {
         </div>
 
         <div class="flex items-center gap-2">
-          <button v-if="paso === 2" @click="aServicios"
-                  class="py-3 px-4 rounded-full font-bold text-on-surface-variant hover:text-primary transition-colors">
+          <button
+            v-if="paso === 2"
+            class="py-3 px-4 rounded-full font-bold text-on-surface-variant hover:text-primary transition-colors"
+            @click="aServicios"
+          >
             Atrás
           </button>
-          <BaseButton v-if="paso === 1" variante="primario" @click="aDiaYHora" :deshabilitado="!seleccionadas.size" class="py-3 px-6">
+          <BaseButton
+            v-if="paso === 1"
+            variante="primario"
+            :deshabilitado="!seleccionadas.size"
+            class="py-3 px-6"
+            @click="aDiaYHora"
+          >
             Continuar <span class="material-symbols-outlined ml-1 text-[18px]">arrow_forward</span>
           </BaseButton>
-          <BaseButton v-else variante="primario" @click="aPago" :deshabilitado="!horaSel" class="py-3 px-6">
+          <BaseButton v-else variante="primario" :deshabilitado="!horaSel" class="py-3 px-6" @click="aPago">
             Ir a pagar <span class="material-symbols-outlined ml-1 text-[18px]">arrow_forward</span>
           </BaseButton>
         </div>

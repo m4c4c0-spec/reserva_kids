@@ -20,6 +20,11 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Query("UPDATE PasswordResetToken t SET t.usado = true WHERE t.usuarioId = :usuarioId AND t.usado = false")
     int invalidarVigentesDeUsuario(@Param("usuarioId") Long usuarioId);
 
+    /** Invalida tokens vigentes de una cuenta de cliente (apoderado). */
+    @Modifying
+    @Query("UPDATE PasswordResetToken t SET t.usado = true WHERE t.cuentaClienteId = :cuentaId AND t.usado = false")
+    int invalidarVigentesDeCuentaCliente(@Param("cuentaId") Long cuentaId);
+
     /** Mantenimiento diario (mismo job que los refresh): la tabla no crece sin límite. */
     @Modifying
     @Query("DELETE FROM PasswordResetToken t WHERE t.usado = true OR t.expiraEn < :ahora")

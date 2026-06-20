@@ -8,9 +8,11 @@ const API_TARGET = process.env.VITE_API_TARGET || 'http://localhost:8080'
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
   server: {
-    host: true,        // escucha en localhost y en la IP de red (acceso desde otra máquina)
+    // Escucha solo en localhost por defecto (no expone el dev server a la LAN:
+    // los CVEs de path-traversal/file-read del dev server de Vite se acotan así).
+    // Para acceder desde otro dispositivo de la red, arranca con `vite --host`.
     port: 5173,
-    strictPort: true,  // si 5173 está ocupado, falla en vez de saltar a otro puerto (rompía CORS)
+    strictPort: true, // si 5173 está ocupado, falla en vez de saltar a otro puerto (rompía CORS)
     // El WebSocket de HMR se sirve en el mismo origen/puerto (5173); con strictPort fijo,
     // el cliente siempre lo encuentra. Si accedes por una IP/host distinto, descomenta:
     // hmr: { host: 'localhost' },

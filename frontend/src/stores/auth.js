@@ -41,7 +41,11 @@ export const useAuthStore = defineStore('auth', {
       this.guardar(data)
     },
     async logout() {
-      try { await axios.post(`${baseURL}/auth/logout`, null, withCreds) } catch { /* token ya inválido */ }
+      try {
+        await axios.post(`${baseURL}/auth/logout`, null, withCreds)
+      } catch {
+        /* token ya inválido */
+      }
       this.logoutLocal()
     },
     logoutLocal() {

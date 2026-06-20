@@ -3,8 +3,10 @@ package cl.reservakids.application.usecase;
 import cl.reservakids.application.dto.ClienteDtos.*;
 import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.CuentaCliente;
+import cl.reservakids.domain.model.PasswordResetToken;
 import cl.reservakids.domain.model.RefreshTokenCliente;
 import cl.reservakids.domain.repository.CuentaClienteRepository;
+import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenClienteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,12 +36,17 @@ public class ClienteAuthService {
 
     private final CuentaClienteRepository cuentaClienteRepository;
     private final RefreshTokenClienteRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
+    private final NotificacionPort notificacion;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.jwt.refresh-days}")
     private long refreshDays;
+
+    @Value("${app.password-reset.minutos}")
+    private long resetMinutos;
 
     private static String normalizarEmail(String email) {
         return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
@@ -115,6 +122,47 @@ public class ClienteAuthService {
             refreshTokenRepository.findByTokenHash(sha256(refreshTokenPlano))
                     .ifPresent(t -> refreshTokenRepository.revocarTodosDeCuenta(t.getCuentaClienteId()));
         }
+    }
+
+    /**
+     * Reset de contraseña para cuentas de cliente (apoderados).
+     * Mismo patrón anti-enumeración que AuthService: siempre 204.
+     */
+    @Transactional
+    public void solicitarResetPassword(String email) {
+        cuentaClienteRepository.findByEmail(normalizarEmail(email)).ifPresent(cuenta -> {
+            passwordResetTokenRepository.invalidarVigentesDeCuentaCliente(cuenta.getId());
+
+            byte[] bytes = new byte[48];
+            secureRandom.nextBytes(bytes);
+            String tokenPlano = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+
+            PasswordResetToken token = new PasswordResetToken();
+            token.setId(UUID.randomUUID());
+            token.setCuentaClienteId(cuenta.getId());
+            token.setTokenHash(sha256(tokenPlano));
+            token.setExpiraEn(OffsetDateTime.now().plusMinutes(resetMinutos));
+            passwordResetTokenRepository.save(token);
+
+            notificacion.resetPasswordCliente(cuenta, tokenPlano);
+        });
+    }
+
+    /**
+     * Confirma el reset de contraseña del cliente. Token de un solo uso.
+     * Cambiar la contraseña revoca TODAS las sesiones.
+     */
+    @Transactional
+    public void confirmarResetPassword(String tokenPlano, String nuevaPassword) {
+        PasswordResetToken token = passwordResetTokenRepository.findByTokenHash(sha256(tokenPlano))
+                .filter(t -> t.vigente(OffsetDateTime.now()))
+                .orElseThrow(() -> new BadCredentialsException(
+                        "El enlace es inválido o ya venció; pide uno nuevo"));
+        token.setUsado(true);
+
+        CuentaCliente cuenta = cuentaClienteRepository.findById(token.getCuentaClienteId()).orElseThrow();
+        cuenta.setPasswordHash(passwordEncoder.encode(nuevaPassword));
+        refreshTokenRepository.revocarTodosDeCuenta(cuenta.getId());
     }
 
     private ClienteTokenResponse emitirTokens(CuentaCliente cuenta) {

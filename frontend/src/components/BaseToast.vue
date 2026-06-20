@@ -4,7 +4,7 @@ import { ref, watch, onUnmounted } from 'vue'
 const props = defineProps({
   mensaje: { type: String, default: '' },
   tipo: { type: String, default: 'exito' },
-  duracion: { type: Number, default: 3000 }
+  duracion: { type: Number, default: 3000 },
 })
 
 const emit = defineEmits(['cerrar'])
@@ -20,11 +20,21 @@ function mostrar() {
   }, props.duracion)
 }
 
-watch(() => props.mensaje, (nuevo) => {
-  if (nuevo) mostrar()
-}, { immediate: true })
+watch(
+  () => props.mensaje,
+  (nuevo) => {
+    if (nuevo) mostrar()
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => clearTimeout(timer))
+
+function cerrar() {
+  clearTimeout(timer)
+  visible.value = false
+  emit('cerrar')
+}
 </script>
 
 <template>
@@ -39,9 +49,9 @@ onUnmounted(() => clearTimeout(timer))
     <div
       v-if="visible && mensaje"
       class="fixed top-4 right-4 z-50 max-w-sm rounded-2xl px-4 py-3 shadow-lifted font-medium text-sm flex items-center gap-2"
-      :class="tipo === 'error'
-        ? 'bg-error-container text-on-error-container'
-        : 'bg-tertiary-fixed text-on-tertiary-fixed'"
+      :class="
+        tipo === 'error' ? 'bg-error-container text-on-error-container' : 'bg-tertiary-fixed text-on-tertiary-fixed'
+      "
       role="alert"
       aria-live="polite"
     >
@@ -49,11 +59,7 @@ onUnmounted(() => clearTimeout(timer))
         {{ tipo === 'error' ? 'error' : 'check_circle' }}
       </span>
       <span class="flex-1">{{ mensaje }}</span>
-      <button
-        @click="visible = false; emit('cerrar')"
-        class="ml-2 opacity-60 hover:opacity-100 transition-opacity"
-        aria-label="Cerrar"
-      >
+      <button class="ml-2 opacity-60 hover:opacity-100 transition-opacity" aria-label="Cerrar" @click="cerrar">
         <span class="material-symbols-outlined text-base">close</span>
       </button>
     </div>

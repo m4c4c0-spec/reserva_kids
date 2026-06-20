@@ -2,6 +2,7 @@ package cl.reservakids.infrastructure.web;
 
 import cl.reservakids.application.dto.AuthDtos.*;
 import cl.reservakids.application.usecase.AuthService;
+import cl.reservakids.application.usecase.PasswordResetService;
 import cl.reservakids.infrastructure.security.AuthPrincipal;
 import cl.reservakids.infrastructure.security.RefreshCookieService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
     private final RefreshCookieService refreshCookieService;
 
     @PostMapping("/register")
@@ -44,9 +46,7 @@ public class AuthController {
     public TokenResponse refresh(@CookieValue(name = RefreshCookieService.COOKIE_DUENO, required = false) String cookieRefresh,
                                  @RequestBody(required = false) RefreshRequest req,
                                  HttpServletResponse res) {
-        String refresh = cookieRefresh != null && !cookieRefresh.isBlank()
-                ? cookieRefresh
-                : (req != null ? req.refreshToken() : null);
+        String refresh = resolverRefresh(cookieRefresh, req);
         if (refresh == null || refresh.isBlank()) {
             throw new org.springframework.security.authentication.BadCredentialsException(
                     "Refresh token inválido o expirado");
@@ -67,9 +67,7 @@ public class AuthController {
                                        @CookieValue(name = RefreshCookieService.COOKIE_DUENO, required = false) String cookieRefresh,
                                        @RequestBody(required = false) RefreshRequest req,
                                        HttpServletResponse res) {
-        String refresh = cookieRefresh != null && !cookieRefresh.isBlank()
-                ? cookieRefresh
-                : (req != null ? req.refreshToken() : null);
+        String refresh = resolverRefresh(cookieRefresh, req);
         authService.logout(principal == null ? null : principal.usuarioId(), refresh);
         refreshCookieService.borrar(res, RefreshCookieService.COOKIE_DUENO);
         return ResponseEntity.noContent().build();
@@ -81,14 +79,22 @@ public class AuthController {
      */
     @PostMapping("/reset/solicitar")
     public ResponseEntity<Void> solicitarReset(@Valid @RequestBody ResetSolicitudRequest req) {
-        authService.solicitarResetPassword(req.email());
+        passwordResetService.solicitarResetPassword(req.email());
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/reset/confirmar")
     public ResponseEntity<Void> confirmarReset(@Valid @RequestBody ResetConfirmacionRequest req) {
-        authService.confirmarResetPassword(req);
+        passwordResetService.confirmarResetPassword(req);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Refresh token: prioriza la cookie HttpOnly; cae al body para clientes no-navegador. */
+    private static String resolverRefresh(String cookieRefresh, RefreshRequest req) {
+        if (cookieRefresh != null && !cookieRefresh.isBlank()) {
+            return cookieRefresh;
+        }
+        return req != null ? req.refreshToken() : null;
     }
 
     /** El refresh token vive solo en la cookie HttpOnly; el body no lo expone. */
