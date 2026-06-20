@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useHead } from '@vueuse/head'
 import * as negocioService from '../services/negocioService'
 import { clp } from '../composables/useCurrency'
 import { useClienteAuthStore } from '../stores/clienteAuth'
@@ -22,6 +23,25 @@ const noExiste = ref(false)
 const bloques = ref([])
 const hoy = new Date()
 const mes = ref(`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`)
+
+// SEO: meta tags dinámicos derivados del negocio cargado (no hace fetch extra).
+const seoTitle = computed(() =>
+  negocio.value ? `${negocio.value.nombre} — ReservaKids` : 'ReservaKids — Reserva de cumpleaños',
+)
+const seoDescription = computed(() =>
+  negocio.value
+    ? `Reserva tu cumpleaños infantil en ${negocio.value.nombre}. Elige un servicio, fecha y hora.`
+    : 'Plataforma de reservas para cumpleaños infantiles en Chile.',
+)
+useHead({
+  title: seoTitle,
+  meta: [
+    { name: 'description', content: seoDescription },
+    { property: 'og:title', content: seoTitle },
+    { property: 'og:description', content: seoDescription },
+    { property: 'og:type', content: 'website' },
+  ],
+})
 
 const seleccion = ref({ servicioId: null, bloqueId: null })
 const form = ref({
