@@ -18,7 +18,7 @@ async function enviar() {
   cargando.value = true
   try {
     await auth.login(email.value, password.value)
-    router.push('/admin/negocios')
+    router.push('/admin/metricas')
   } catch (e) {
     error.value = e.response?.data?.message || 'Credenciales inválidas'
   } finally {
