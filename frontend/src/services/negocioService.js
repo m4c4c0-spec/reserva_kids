@@ -1,6 +1,6 @@
 import axios from 'axios'
 import api from '../api/clienteClient'
-import { BASE_URL } from '../composables/useBaseURL'
+import { BASE_URL } from '../composables/apiBase'
 
 export async function catalogo(slug) {
   const { data } = await axios.get(`${BASE_URL}/public/${slug}`)

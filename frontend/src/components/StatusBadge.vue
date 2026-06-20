@@ -1,6 +1,6 @@
 <script setup>
 defineProps({
-  estado: { type: String, required: true }
+  estado: { type: String, required: true },
 })
 
 const colores = {
@@ -9,7 +9,7 @@ const colores = {
   COTIZADA: 'bg-secondary-fixed text-on-secondary-container',
   CONFIRMADA: 'bg-primary-fixed text-on-primary-container',
   REALIZADA: 'bg-surface-container text-on-surface',
-  CANCELADA: 'bg-error-container text-on-error-container'
+  CANCELADA: 'bg-error-container text-on-error-container',
 }
 </script>
 

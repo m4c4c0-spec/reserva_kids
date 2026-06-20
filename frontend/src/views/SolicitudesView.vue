@@ -21,11 +21,14 @@ const pagando = ref(null)
 const pago = ref({ montoClp: null, medio: 'TRANSFERENCIA', comprobanteUrl: '' })
 const cancelandoId = ref(null)
 const motivoCancelacion = ref('')
-const exito = ref('')
 
 const ESTADOS = ['', 'PENDIENTE', 'COTIZADA', 'CONFIRMADA', 'REALIZADA', 'CANCELADA']
 
-const { cargando, error: errorCarga, ejecutar: cargar } = useAsync(async () => {
+const {
+  cargando,
+  error: errorCarga,
+  ejecutar: cargar,
+} = useAsync(async () => {
   const data = await reservaService.listar(filtro.value, paginaActual.value)
   reservas.value = data.content
   totalPaginas.value = data.totalPages
@@ -38,6 +41,11 @@ const { error: errorAccion, ejecutar: ejecutarAccion } = useAsync(async (fn) => 
 
 function cambiarPagina(p) {
   paginaActual.value = p
+  cargar()
+}
+
+function reiniciarPagina() {
+  paginaActual.value = 0
   cargar()
 }
 
@@ -86,8 +94,12 @@ onMounted(cargar)
         <h2 class="font-display font-bold text-2xl md:text-3xl text-on-surface">Solicitudes</h2>
         <p class="font-medium text-on-surface-variant text-sm mt-0.5">Gestiona las reservas de tus clientes.</p>
       </div>
-      <select v-model="filtro" @change="paginaActual = 0; cargar()"
-              class="bg-surface-high rounded-full px-4 py-2 text-sm font-bold text-on-surface border-none focus:outline-none focus:ring-2 focus:ring-primary-container cursor-pointer">
+      <select
+        v-model="filtro"
+        aria-label="Filtrar solicitudes por estado"
+        class="bg-surface-high rounded-full px-4 py-2 text-sm font-bold text-on-surface border-none focus:outline-none focus:ring-2 focus:ring-primary-container cursor-pointer"
+        @change="reiniciarPagina"
+      >
         <option v-for="e in ESTADOS" :key="e" :value="e">{{ e || 'Todas' }}</option>
       </select>
     </div>
@@ -97,8 +109,7 @@ onMounted(cargar)
     <LoadingSpinner v-if="cargando" />
 
     <ul v-else class="space-y-4">
-      <li v-for="r in reservas" :key="r.id"
-          class="bg-surface-lowest rounded-3xl shadow-soft border border-outline-variant/20 p-5 space-y-2 hover:shadow-lifted transition-shadow">
+      <li v-for="r in reservas" :key="r.id" class="card-festiva card-festiva--interactiva space-y-2">
         <div class="flex items-center justify-between">
           <p class="font-display font-bold text-lg text-on-surface">Solicitud #{{ r.id }}</p>
           <StatusBadge :estado="r.estado" />
@@ -110,59 +121,101 @@ onMounted(cargar)
         </p>
         <p v-if="r.comentarios" class="text-sm font-medium text-outline whitespace-pre-line">{{ r.comentarios }}</p>
         <p v-if="r.totalClp != null" class="text-sm font-medium text-on-surface bg-surface-low rounded-xl px-3 py-2">
-          Total {{ clp(r.totalClp) }} · Seña {{ clp(r.seniaClp) }} ·
-          Pagado {{ clp(r.pagadoClp) }} · <strong class="text-primary">Saldo {{ clp(r.saldoClp) }}</strong>
+          Total {{ clp(r.totalClp) }} · Seña {{ clp(r.seniaClp) }} · Pagado {{ clp(r.pagadoClp) }} ·
+          <strong class="text-primary">Saldo {{ clp(r.saldoClp) }}</strong>
         </p>
 
-        <form v-if="cotizando === r.id" @submit.prevent="cotizar(r)" class="flex flex-wrap gap-2 items-end">
-          <input v-model.number="cotizacion.totalClp" type="number" min="0" required placeholder="Total CLP"
-                 class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2 text-sm font-medium w-32 focus:outline-none focus:border-secondary" />
-          <input v-model.number="cotizacion.seniaClp" type="number" min="0" required placeholder="Seña CLP"
-                 class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2 text-sm font-medium w-32 focus:outline-none focus:border-secondary" />
+        <form v-if="cotizando === r.id" class="flex flex-wrap gap-2 items-end" @submit.prevent="cotizar(r)">
+          <input
+            v-model.number="cotizacion.totalClp"
+            type="number"
+            min="0"
+            required
+            placeholder="Total CLP"
+            aria-label="Total en pesos chilenos"
+            class="input-festivo !w-32"
+          />
+          <input
+            v-model.number="cotizacion.seniaClp"
+            type="number"
+            min="0"
+            required
+            placeholder="Seña CLP"
+            aria-label="Seña en pesos chilenos"
+            class="input-festivo !w-32"
+          />
           <BaseButton variante="primario">Enviar cotización</BaseButton>
         </form>
 
-        <form v-if="pagando === r.id" @submit.prevent="registrarPago(r)" class="flex flex-wrap gap-2 items-end">
-          <input v-model.number="pago.montoClp" type="number" min="1" required placeholder="Monto CLP"
-                 class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2 text-sm font-medium w-32 focus:outline-none focus:border-secondary" />
-          <select v-model="pago.medio"
-                  class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:border-secondary">
+        <form v-if="pagando === r.id" class="flex flex-wrap gap-2 items-end" @submit.prevent="registrarPago(r)">
+          <input
+            v-model.number="pago.montoClp"
+            type="number"
+            min="1"
+            required
+            placeholder="Monto CLP"
+            aria-label="Monto del pago en pesos chilenos"
+            class="input-festivo !w-32"
+          />
+          <select v-model="pago.medio" aria-label="Medio de pago" class="input-festivo">
             <option>TRANSFERENCIA</option>
             <option>EFECTIVO</option>
             <option>OTRO</option>
           </select>
-          <input v-model="pago.comprobanteUrl" placeholder="URL comprobante (opcional)"
-                 class="border-2 border-surface-highest bg-surface rounded-xl px-3 py-2 text-sm font-medium flex-1 min-w-40 focus:outline-none focus:border-secondary" />
+          <input
+            v-model="pago.comprobanteUrl"
+            placeholder="URL comprobante (opcional)"
+            aria-label="URL del comprobante de pago"
+            class="input-festivo !flex-1 !min-w-40"
+          />
           <BaseButton variante="secundario">Registrar seña</BaseButton>
         </form>
 
         <div class="flex flex-wrap gap-2 pt-1 text-sm">
-          <a v-if="r.linkWhatsApp" :href="r.linkWhatsApp" target="_blank"
-             class="bg-[#dcfce7] text-green-800 font-bold rounded-full px-4 py-1.5 hover:shadow-md transition-all">WhatsApp</a>
-          <a v-if="r.estado === 'COTIZADA' && r.mpInitPoint" :href="r.mpInitPoint" target="_blank"
-             class="bg-secondary-fixed text-on-secondary-container font-bold rounded-full px-4 py-1.5 hover:shadow-md transition-all">Link de Pago</a>
-          <button v-if="r.estado === 'PENDIENTE'" @click="cotizando = cotizando === r.id ? null : r.id"
-                  class="border-2 border-outline-variant font-bold text-on-surface-variant rounded-full px-4 py-1.5 hover:bg-surface-low transition-colors">Cotizar</button>
-          <button v-if="['COTIZADA', 'CONFIRMADA'].includes(r.estado)"
-                  @click="pagando = pagando === r.id ? null : r.id"
-                  class="border-2 border-outline-variant font-bold text-on-surface-variant rounded-full px-4 py-1.5 hover:bg-surface-low transition-colors">Registrar pago</button>
+          <a
+            v-if="r.linkWhatsApp"
+            :href="r.linkWhatsApp"
+            target="_blank"
+            class="bg-[#dcfce7] text-green-800 font-bold rounded-full px-4 py-1.5 hover:shadow-md transition-all"
+            >WhatsApp</a
+          >
+          <a
+            v-if="r.estado === 'COTIZADA' && r.mpInitPoint"
+            :href="r.mpInitPoint"
+            target="_blank"
+            class="bg-secondary-fixed text-on-secondary-container font-bold rounded-full px-4 py-1.5 hover:shadow-md transition-all"
+            >Link de Pago</a
+          >
+          <button
+            v-if="r.estado === 'PENDIENTE'"
+            class="border-2 border-outline-variant font-bold text-on-surface-variant rounded-full px-4 py-1.5 hover:bg-surface-low transition-colors"
+            @click="cotizando = cotizando === r.id ? null : r.id"
+          >
+            Cotizar
+          </button>
+          <button
+            v-if="['COTIZADA', 'CONFIRMADA'].includes(r.estado)"
+            class="border-2 border-outline-variant font-bold text-on-surface-variant rounded-full px-4 py-1.5 hover:bg-surface-low transition-colors"
+            @click="pagando = pagando === r.id ? null : r.id"
+          >
+            Registrar pago
+          </button>
           <BaseButton v-if="r.estado === 'COTIZADA'" @click="confirmarReserva(r)">Confirmar</BaseButton>
           <BaseButton v-if="r.estado === 'CONFIRMADA'" @click="realizar(r)">Marcar realizada</BaseButton>
-          <button v-if="['PENDIENTE', 'COTIZADA', 'CONFIRMADA'].includes(r.estado)" @click="abrirCancelacion(r)"
-                  class="text-error font-bold px-2 hover:underline">Cancelar</button>
+          <button
+            v-if="['PENDIENTE', 'COTIZADA', 'CONFIRMADA'].includes(r.estado)"
+            class="text-error font-bold px-2 hover:underline"
+            @click="abrirCancelacion(r)"
+          >
+            Cancelar
+          </button>
         </div>
       </li>
     </ul>
 
-    <EmptyState v-if="!cargando && !reservas.length"
-                mensaje="No hay solicitudes."
-                icono="inbox" />
+    <EmptyState v-if="!cargando && !reservas.length" mensaje="No hay solicitudes." icono="inbox" />
 
-    <BasePagination
-      :paginaActual="paginaActual"
-      :totalPaginas="totalPaginas"
-      @cambiarPagina="cambiarPagina"
-    />
+    <BasePagination :pagina-actual="paginaActual" :total-paginas="totalPaginas" @cambiar-pagina="cambiarPagina" />
 
     <BaseModal
       :visible="!!cancelandoId"
@@ -172,8 +225,12 @@ onMounted(cargar)
       @confirmar="confirmarCancelacion"
     >
       <p class="text-sm font-medium text-on-surface-variant mb-3">Motivo de cancelación (opcional):</p>
-      <input v-model="motivoCancelacion" placeholder="Ej: Cliente desiste"
-             class="w-full border-2 border-surface-highest bg-surface rounded-xl px-3 py-2.5 font-medium text-sm focus:outline-none focus:border-secondary" />
+      <input
+        v-model="motivoCancelacion"
+        placeholder="Ej: Cliente desiste"
+        aria-label="Motivo de cancelación"
+        class="input-festivo"
+      />
     </BaseModal>
   </section>
 </template>

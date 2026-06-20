@@ -1,6 +1,6 @@
 <script setup>
 defineProps({
-  mensaje: { type: String, default: 'Cargando...' }
+  mensaje: { type: String, default: 'Cargando...' },
 })
 </script>
 

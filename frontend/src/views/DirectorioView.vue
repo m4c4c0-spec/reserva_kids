@@ -42,8 +42,7 @@ onMounted(cargar)
 </script>
 
 <template>
-  <main class="min-h-screen bg-surface bg-cover bg-center bg-fixed"
-        :style="{ backgroundImage: `url(${bgV2})` }">
+  <main class="min-h-screen bg-surface bg-cover bg-center bg-fixed" :style="{ backgroundImage: `url(${bgV2})` }">
     <div class="max-w-2xl mx-auto p-5 space-y-6">
       <header class="flex items-center justify-between pt-6">
         <div>
@@ -52,8 +51,10 @@ onMounted(cargar)
           </h1>
           <p class="font-medium text-on-surface-variant text-sm mt-0.5">Elige un negocio con horarios disponibles</p>
         </div>
-        <button @click="salir"
-                class="flex items-center gap-1 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors">
+        <button
+          class="flex items-center gap-1 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors"
+          @click="salir"
+        >
           <span class="material-symbols-outlined text-[20px]">logout</span> Salir
         </button>
       </header>
@@ -63,8 +64,7 @@ onMounted(cargar)
 
       <ul v-else-if="negocios.length" class="grid gap-4 sm:grid-cols-2">
         <li v-for="n in negocios" :key="n.slug">
-          <RouterLink :to="`/clientes/agendar/${n.slug}`"
-                      class="block bg-surface-lowest rounded-3xl shadow-soft border border-outline-variant/20 p-5 hover:shadow-lifted hover:-translate-y-0.5 transition-all group">
+          <RouterLink :to="`/clientes/agendar/${n.slug}`" class="card-festiva card-festiva--interactiva block group">
             <div class="flex items-center gap-3">
               <div class="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center shrink-0">
                 <span class="material-symbols-outlined text-on-primary-container">storefront</span>
@@ -72,7 +72,10 @@ onMounted(cargar)
               <div class="min-w-0">
                 <h2 class="font-display font-bold text-on-surface truncate">{{ n.nombre }}</h2>
                 <p class="text-xs font-bold text-secondary flex items-center gap-1">
-                  Agendar <span class="material-symbols-outlined text-[16px] group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
+                  Agendar
+                  <span class="material-symbols-outlined text-[16px] group-hover:translate-x-0.5 transition-transform"
+                    >arrow_forward</span
+                  >
                 </p>
               </div>
             </div>
@@ -80,9 +83,7 @@ onMounted(cargar)
         </li>
       </ul>
 
-      <EmptyState v-else
-                  mensaje="Aún no hay negocios con horarios disponibles. Vuelve pronto."
-                  icono="storefront">
+      <EmptyState v-else mensaje="Aún no hay negocios con horarios disponibles. Vuelve pronto." icono="storefront">
         <template #acciones>
           <img :src="charCake" alt="" class="w-24 h-24 object-contain mt-2 character-img" aria-hidden="true" />
         </template>

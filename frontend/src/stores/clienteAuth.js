@@ -44,7 +44,11 @@ export const useClienteAuthStore = defineStore('clienteAuth', {
       this.guardar(data)
     },
     async logout() {
-      try { await axios.post(`${baseURL}/cliente-auth/logout`, null, withCreds) } catch { /* token ya inválido */ }
+      try {
+        await axios.post(`${baseURL}/cliente-auth/logout`, null, withCreds)
+      } catch {
+        /* token ya inválido */
+      }
       this.logoutLocal()
     },
     logoutLocal() {

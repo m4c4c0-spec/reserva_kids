@@ -106,6 +106,23 @@ npm ci && npm run build        # genera dist/ (~150 kB)
 reservakids.cl {
     encode gzip
 
+    # Headers de seguridad (revisión de ciberseguridad §5.12):
+    # - CSP: solo scripts/estilos self + fuentes Google; imágenes data: y self;
+    #   connect a la API self y a Mercado Pago; sin frames (anti clickjacking).
+    # - X-Content-Type-Options: anti MIME sniffing.
+    # - Referrer-Policy: no envía Referer a terceros (mitiga leak del token de
+    #   reset que viaja en query string).
+    # - frame-ancestors 'none': anti clickjacking (defensa en profundidad con CSP).
+    header {
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.mercadopago.cl https://*.mercadopago.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.mercadopago.com"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        # HSTS: 1 año + preload. Solo si ya sirves todo por HTTPS (Caddy sí).
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    }
+
     # API y health check → backend en localhost
     handle /api/* {
         reverse_proxy localhost:8080
@@ -183,6 +200,7 @@ cada ventana semestral (`OPERACION.md` §1).
 ## 9. Checklist post-despliegue
 
 - [ ] `https://reservakids.cl` carga el frontend con candado TLS
+- [ ] Headers de seguridad presentes: `curl -I https://reservakids.cl | grep -iE "content-security-policy|x-content-type-options|referrer-policy|strict-transport-security"` (revisión §5.12)
 - [ ] `https://reservakids.cl/actuator/health` → `{"status":"UP"}`
 - [ ] Registro de un negocio de prueba → llega al panel
 - [ ] Crear servicio + bloque → visibles en `https://reservakids.cl/<slug>`

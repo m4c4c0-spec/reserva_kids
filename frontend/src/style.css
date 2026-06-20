@@ -53,6 +53,20 @@
   --shadow-lifted: 0 16px 32px -12px rgb(181 0 125 / 0.25);
   --shadow-inner-glow: inset 0 1px 2px rgb(255 255 255 / 0.4);
 
+  /* ─── Tokens de movimiento (identidad festiva) ─── */
+  --ease-festive: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+
+  /* ─── Escala de z-index (fin al sálvese quien pueda) ─── */
+  --z-sticky: 30;
+  --z-navbar: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+  --z-confetti: 50;
+
   /* Animación flotante de los personajes 3D */
   --animate-floating: floating 3s ease-in-out infinite;
   --animate-floating-delayed: floating 3.5s ease-in-out 1s infinite;
@@ -102,4 +116,144 @@ body {
 .character-cover-eyes {
   transform: scale(0.85) translateY(10px);
   filter: blur(8px) brightness(0.7) contrast(1.1);
+}
+
+/* ============================================================
+   Capa de recetas "Festive" — component classes que encapsulan
+   los patrones repetidos y dan identidad (alternativa Panda CSS).
+   Usan los tokens de @theme. Aplicar con :class="btn-festivo ..."
+   o los modificadores .btn-festivo--primario etc.
+   ============================================================ */
+@layer components {
+  /* Botón festivo: base + 3 variantes. Reemplaza el utility soup
+     de BaseButton y los botones inline de las vistas. */
+  .btn-festivo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    padding: 0.5rem 1rem;
+    font-weight: 700;
+    font-size: 0.875rem;
+    transition: all var(--duration-normal) var(--ease-out-soft);
+    cursor: pointer;
+  }
+  .btn-festivo:active {
+    transform: scale(0.95);
+  }
+  .btn-festivo:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-festivo:disabled:active {
+    transform: none;
+  }
+  .btn-festivo--primario {
+    background-color: var(--color-primary-container);
+    color: var(--color-on-primary-container);
+    box-shadow: var(--shadow-soft);
+  }
+  .btn-festivo--primario:hover {
+    background-color: var(--color-primary-fixed);
+    box-shadow: var(--shadow-lifted);
+    transform: translateY(-2px);
+  }
+  .btn-festivo--secundario {
+    border: 2px solid var(--color-outline-variant);
+    color: var(--color-on-surface-variant);
+    background-color: transparent;
+  }
+  .btn-festivo--secundario:hover {
+    background-color: var(--color-surface-container);
+  }
+  .btn-festivo--peligro {
+    background-color: var(--color-error-container);
+    color: var(--color-on-error-container);
+    box-shadow: var(--shadow-soft);
+  }
+  .btn-festivo--peligro:hover {
+    box-shadow: var(--shadow-lifted);
+    transform: translateY(-2px);
+  }
+
+  /* Input festivo: el patrón repetido ~15 veces en las vistas. */
+  .input-festivo {
+    width: 100%;
+    border: 2px solid var(--color-surface-highest);
+    background-color: var(--color-surface);
+    border-radius: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    font-weight: 500;
+    color: var(--color-on-surface);
+    transition: border-color var(--duration-fast) var(--ease-out-soft);
+  }
+  .input-festivo::placeholder {
+    color: var(--color-outline);
+  }
+  .input-festivo:focus {
+    outline: none;
+    border-color: var(--color-secondary);
+  }
+  .input-festivo:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  /* Variante con icono a la izquierda: el patrón de los formularios de auth.
+     El icono se posiciona absoluto; este añade el padding-left para dejarle espacio. */
+  .input-festivo--con-icono {
+    padding-left: 2.75rem;
+  }
+
+  /* Card festiva: la tarjeta de lista (solicitudes, servicios, bloques). */
+  .card-festiva {
+    background-color: var(--color-surface-lowest);
+    border-radius: 1.5rem;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid color-mix(in srgb, var(--color-outline-variant) 20%, transparent);
+    padding: 1.25rem;
+    transition: box-shadow var(--duration-normal) var(--ease-out-soft),
+      transform var(--duration-normal) var(--ease-out-soft);
+  }
+  .card-festiva--interactiva:hover {
+    box-shadow: var(--shadow-lifted);
+    transform: translateY(-2px);
+  }
+
+  /* Chip festivo: las píldoras de bloques/estados/filtros. */
+  .chip-festivo {
+    border-radius: 9999px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    border: 2px solid transparent;
+    transition: all var(--duration-fast) var(--ease-out-soft);
+    cursor: pointer;
+  }
+  .chip-festivo:active {
+    transform: scale(0.95);
+  }
+}
+
+/* ============================================================
+   Micro-interacciones de identidad: focus-visible festivo
+   (anillo rosa eléctrico) para TODOS los focusables. Mejora
+   a11y + da personalidad sin tocar cada componente.
+   ============================================================ */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respeto a quien prefiere menos movimiento (a11y + UX). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

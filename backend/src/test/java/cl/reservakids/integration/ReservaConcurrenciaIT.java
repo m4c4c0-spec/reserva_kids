@@ -75,7 +75,7 @@ class ReservaConcurrenciaIT {
         servicio.setNombre("Cumple básico");
         servicio.setPrecioClp(100000);
         servicio.setActivo(true);
-        servicio = servicioRepository.save(servicio);
+        servicioRepository.save(servicio);
 
         BloqueDisponible bloque = new BloqueDisponible();
         bloque.setTenantId(tenant.getId());

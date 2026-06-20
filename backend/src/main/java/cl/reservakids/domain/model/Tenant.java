@@ -35,7 +35,7 @@ public class Tenant {
     private String plan = "BASICO";
 
     @Column(nullable = false)
-    private String estado = "ACTIVO";
+    private String estado = ESTADO_ACTIVO;
 
     /** Granularidad de los slots de agenda en minutos (ej. cada 30 min). */
     @Column(name = "intervalo_min", nullable = false)

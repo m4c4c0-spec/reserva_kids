@@ -36,7 +36,7 @@ class DisponibilidadServiceTest {
     private static final ZoneId ZONA = ZoneId.of("America/Santiago");
     // Jueves 2026-06-18 ~09:00 en Santiago → el viernes 19 es futuro (sin filtro de pasado).
     private final Clock clock = Clock.fixed(Instant.parse("2026-06-18T13:00:00Z"), ZONA);
-    private final LocalDate VIERNES = LocalDate.of(2026, 6, 19);
+    private static final LocalDate VIERNES = LocalDate.of(2026, 6, 19);
 
     private DisponibilidadService service;
 
