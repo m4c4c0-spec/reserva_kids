@@ -106,7 +106,7 @@ class ReservaServiceTest {
         when(reservaRepository.findByIdAndTenantId(50L, 1L)).thenReturn(Optional.of(cita));
         when(pagoRepository.existsByReferenciaExterna("pay-1")).thenReturn(false);
         when(tenantRepository.findById(1L)).thenReturn(Optional.of(tenant));
-        when(clienteRepository.findById(30L)).thenReturn(Optional.of(cliente));
+        when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.of(cliente));
         when(reservaServicioRepository.findByReservaIdOrderById(50L)).thenReturn(List.of());
 
         service.procesarWebhookPago(1L, 50L, "pay-1", 12000, "approved");
@@ -149,7 +149,7 @@ class ReservaServiceTest {
         Reserva reserva = reservaEnEstado(EstadoReserva.COTIZADA);
         when(reservaRepository.findByIdAndTenantId(40L, 1L)).thenReturn(Optional.of(reserva));
         when(pagoRepository.totalPagado(40L)).thenReturn(30_000);
-        when(clienteRepository.findById(30L)).thenReturn(Optional.empty());
+        when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
         var respuesta = service.confirmar(1L, 40L);
 
@@ -191,7 +191,7 @@ class ReservaServiceTest {
         assertEquals(30_000, pagina.getContent().get(0).pagadoClp());
         assertEquals(0, pagina.getContent().get(1).pagadoClp());
         verify(pagoRepository, never()).totalPagado(anyLong());
-        verify(clienteRepository, never()).findById(anyLong());
+        verify(clienteRepository, never()).findByIdAndTenantId(anyLong(), anyLong());
     }
 
     /** Falla #2 (revisión 2 años): REALIZADA dejó de ser inalcanzable. */
@@ -200,7 +200,7 @@ class ReservaServiceTest {
         Reserva reserva = reservaEnEstado(EstadoReserva.CONFIRMADA);
         when(reservaRepository.findByIdAndTenantId(40L, 1L)).thenReturn(Optional.of(reserva));
         when(pagoRepository.totalPagado(40L)).thenReturn(100_000);
-        when(clienteRepository.findById(30L)).thenReturn(Optional.empty());
+        when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
         var respuesta = service.realizar(1L, 40L);
 
@@ -213,7 +213,7 @@ class ReservaServiceTest {
         Reserva reserva = reservaEnEstado(EstadoReserva.PENDIENTE);
         when(reservaRepository.findByIdAndTenantId(40L, 1L)).thenReturn(Optional.of(reserva));
         when(pagoRepository.totalPagado(40L)).thenReturn(0);
-        when(clienteRepository.findById(30L)).thenReturn(Optional.empty());
+        when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
         var respuesta = service.cancelar(1L, 40L, null);
 

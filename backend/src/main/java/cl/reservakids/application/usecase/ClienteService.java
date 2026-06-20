@@ -19,7 +19,7 @@ import java.time.OffsetDateTime;
  * Cuando un apoderado pide "bórrenme de su base", el dueño lo ejecuta desde el panel:
  * la fila se conserva (las reservas históricas la referencian) pero deja de contener
  * datos personales. Complementa la anonimización automática por inactividad
- * de {@link ExpiracionService#anonimizarInactivos()}.
+ * de {@link ClienteRetencionJobs#anonimizarInactivos()}.
  */
 @Slf4j
 @Service
