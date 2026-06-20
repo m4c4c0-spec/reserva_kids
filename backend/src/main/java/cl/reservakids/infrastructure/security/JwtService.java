@@ -69,6 +69,22 @@ public class JwtService implements TokenPort {
                 .compact();
     }
 
+    /** Administrador de plataforma: rol ADMIN y SIN tenantId (gobierna todos los negocios). */
+    @Override
+    public String emitirAccessTokenAdmin(Long adminId, String email) {
+        Instant ahora = Instant.now();
+        return Jwts.builder()
+                .subject(String.valueOf(adminId))
+                .issuer(issuer)
+                .audience().add(audience).and()
+                .issuedAt(Date.from(ahora))
+                .expiration(Date.from(ahora.plus(accessTtl)))
+                .claim("rol", "ADMIN")
+                .claim("email", email)
+                .signWith(key)
+                .compact();
+    }
+
     /** Lanza JwtException si la firma, iss, aud o exp no son válidos. */
     public AuthPrincipal validar(String token) {
         Claims claims = Jwts.parser()
