@@ -2,6 +2,9 @@ import adminApi from '../api/adminClient'
 
 // Consola de plataforma (F2 backend): gobierno de negocios cross-tenant.
 export const adminService = {
+  metricas() {
+    return adminApi.get('/admin/metricas').then((r) => r.data)
+  },
   listarNegocios({ estado, q } = {}) {
     const params = {}
     if (estado) params.estado = estado

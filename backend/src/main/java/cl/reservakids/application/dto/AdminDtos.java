@@ -21,4 +21,10 @@ public final class AdminDtos {
     public record NegocioAdminResumen(
             Long id, String slug, String nombre, String plan, String estado,
             OffsetDateTime creadoEn, long reservas) {}
+
+    /** KPIs globales de plataforma (F4): visión de operador, cross-tenant. */
+    public record MetricasGlobales(
+            long negociosTotal, long negociosActivos, long negociosSuspendidos, long negociosCerrados,
+            long reservasTotal, long reservasActivas,
+            long apoderados, long recaudadoSenasClp) {}
 }

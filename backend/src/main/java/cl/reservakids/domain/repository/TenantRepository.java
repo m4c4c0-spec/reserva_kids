@@ -13,6 +13,9 @@ public interface TenantRepository extends JpaRepository<Tenant, Long> {
     Optional<Tenant> findBySlugAndEstado(String slug, String estado);
     boolean existsBySlug(String slug);
 
+    /** Métricas de plataforma (F4): nº de negocios en un estado dado. */
+    long countByEstado(String estado);
+
     /** Falla 3.3 (5 años): tenants cerrados cuya ventana de gracia ya venció — candidatos a purga. */
     List<Tenant> findByEstadoAndCerradoEnBefore(String estado, OffsetDateTime limite);
 

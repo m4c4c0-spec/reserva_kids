@@ -107,6 +107,18 @@ class AdminControllerIT {
     }
 
     @Test
+    void metricasDevuelveKpisDePlataforma() throws Exception {
+        crearTenant(Tenant.ESTADO_ACTIVO);
+        mockMvc.perform(get("/api/admin/metricas").header("Authorization", "Bearer " + accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.negociosTotal").isNumber())
+                .andExpect(jsonPath("$.negociosActivos").isNumber())
+                .andExpect(jsonPath("$.reservasTotal").isNumber())
+                .andExpect(jsonPath("$.apoderados").isNumber())
+                .andExpect(jsonPath("$.recaudadoSenasClp").isNumber());
+    }
+
+    @Test
     void filtraPorEstado() throws Exception {
         Long suspendido = crearTenant(Tenant.ESTADO_SUSPENDIDO);
         mockMvc.perform(get("/api/admin/negocios").param("estado", "SUSPENDIDO")

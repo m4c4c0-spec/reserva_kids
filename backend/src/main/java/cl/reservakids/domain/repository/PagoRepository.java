@@ -21,6 +21,12 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             FROM Pago p WHERE p.reservaId = :reservaId AND p.estado = 'CONFIRMADO'""")
     int totalPagado(@Param("reservaId") Long reservaId);
 
+    /** Métricas de plataforma (F4): total recaudado en señas (confirmados − devoluciones), todos los tenants. */
+    @Query("""
+            SELECT COALESCE(SUM(CASE WHEN p.tipo = 'DEVOLUCION' THEN -p.montoClp ELSE p.montoClp END), 0)
+            FROM Pago p WHERE p.estado = 'CONFIRMADO'""")
+    long totalRecaudadoPlataforma();
+
     /** Fix #7 (revisión de código): totales de una página entera en UNA query (antes: una por reserva). */
     @Query("""
             SELECT p.reservaId, COALESCE(SUM(CASE WHEN p.tipo = 'DEVOLUCION' THEN -p.montoClp ELSE p.montoClp END), 0)
