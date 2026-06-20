@@ -23,6 +23,9 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     /** Consola de admin (F2): nº de reservas de un negocio (detalle de un tenant). */
     long countByTenantId(Long tenantId);
 
+    /** Métricas de plataforma (F4): nº de reservas en un conjunto de estados (p. ej. ACTIVOS). */
+    long countByEstadoIn(Collection<EstadoReserva> estados);
+
     /** Job de expiración (RF-05): solicitudes pendientes más antiguas que el límite. */
     List<Reserva> findByEstadoAndCreadaEnBefore(EstadoReserva estado, OffsetDateTime limite);
 

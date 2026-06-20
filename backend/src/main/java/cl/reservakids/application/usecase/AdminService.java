@@ -1,8 +1,12 @@
 package cl.reservakids.application.usecase;
 
+import cl.reservakids.application.dto.AdminDtos.MetricasGlobales;
 import cl.reservakids.application.dto.AdminDtos.NegocioAdminResumen;
+import cl.reservakids.domain.model.EstadoReserva;
 import cl.reservakids.domain.model.Tenant;
+import cl.reservakids.domain.repository.CuentaClienteRepository;
 import cl.reservakids.domain.repository.NegocioAdminView;
+import cl.reservakids.domain.repository.PagoRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.TenantRepository;
@@ -28,6 +32,8 @@ public class AdminService {
     private final TenantRepository tenantRepository;
     private final ReservaRepository reservaRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final CuentaClienteRepository cuentaClienteRepository;
+    private final PagoRepository pagoRepository;
 
     /**
      * Listado para la consola, filtrable por estado y texto (nombre/slug). Un solo query agregado.
@@ -42,6 +48,20 @@ public class AdminService {
         return tenantRepository.listarParaAdmin(estadoFiltro, patron).stream()
                 .map(AdminService::aResumen)
                 .toList();
+    }
+
+    /** KPIs globales de plataforma (F4): visión de operador. Todo cross-tenant. */
+    @Transactional(readOnly = true)
+    public MetricasGlobales metricas() {
+        return new MetricasGlobales(
+                tenantRepository.count(),
+                tenantRepository.countByEstado(Tenant.ESTADO_ACTIVO),
+                tenantRepository.countByEstado(Tenant.ESTADO_SUSPENDIDO),
+                tenantRepository.countByEstado(Tenant.ESTADO_CERRADO),
+                reservaRepository.count(),
+                reservaRepository.countByEstadoIn(EstadoReserva.ACTIVOS),
+                cuentaClienteRepository.count(),
+                pagoRepository.totalRecaudadoPlataforma());
     }
 
     @Transactional(readOnly = true)
