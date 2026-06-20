@@ -70,6 +70,22 @@ public class ClienteAuthController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Sprint 2 §2.3: recuperación de contraseña de cliente (apoderado). 204 SIEMPRE —
+     * no revela si el email existe (anti-enumeración); rate limit ya cubre /api/cliente-auth/**.
+     */
+    @PostMapping("/reset/solicitar")
+    public ResponseEntity<Void> solicitarReset(@Valid @RequestBody AuthDtos.ResetSolicitudRequest req) {
+        clienteAuthService.solicitarResetPassword(req.email());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/reset/confirmar")
+    public ResponseEntity<Void> confirmarReset(@Valid @RequestBody AuthDtos.ResetConfirmacionRequest req) {
+        clienteAuthService.confirmarResetPassword(req.token(), req.nuevaPassword());
+        return ResponseEntity.noContent().build();
+    }
+
     /** Refresh token: prioriza la cookie HttpOnly; cae al body para clientes no-navegador. */
     private static String resolverRefresh(String cookieRefresh, AuthDtos.RefreshRequest req) {
         if (cookieRefresh != null && !cookieRefresh.isBlank()) {
