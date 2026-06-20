@@ -8,4 +8,7 @@ public interface TokenPort {
 
     /** Token para una cuenta de cliente (rol CLIENTE, sin tenant). */
     String emitirAccessTokenCliente(Long cuentaId, String email);
+
+    /** Token para un administrador de plataforma (rol ADMIN, sin tenant). */
+    String emitirAccessTokenAdmin(Long adminId, String email);
 }

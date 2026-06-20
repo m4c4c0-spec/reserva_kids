@@ -51,7 +51,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Falla #8 (2 años): health sin auth para Docker/uptime monitor (sin detalles)
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers("/api/public/**", "/api/auth/**", "/api/cliente-auth/**").permitAll()
+                        .requestMatchers("/api/public/**", "/api/auth/**", "/api/cliente-auth/**", "/api/admin-auth/**").permitAll()
+                        // Consola de plataforma (gobierno de negocios cross-tenant) — rol ADMIN.
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // Área de cliente (apoderado): directorio de negocios — rol CLIENTE.
                         .requestMatchers("/api/cliente/**").hasRole("CLIENTE")
                         // Resto del panel (reservas, servicios, calendario, tenant…): solo el dueño.

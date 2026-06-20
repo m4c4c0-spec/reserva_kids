@@ -39,7 +39,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
         return !(uri.startsWith("/api/public/") || uri.startsWith("/api/auth/")
-                || uri.startsWith("/api/cliente-auth/")); // login de cliente: acotar fuerza bruta
+                || uri.startsWith("/api/cliente-auth/") // login de cliente: acotar fuerza bruta
+                || uri.startsWith("/api/admin-auth/")); // login de admin: cuenta más sensible del sistema
     }
 
     @Override
