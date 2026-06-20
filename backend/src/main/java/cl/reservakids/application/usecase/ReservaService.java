@@ -139,6 +139,34 @@ public class ReservaService {
         });
     }
 
+    /**
+     * Sprint 2 §2.2: historial de reservas del cliente autenticado (apoderado). A diferencia
+     * de {@link #listar}, cruza tenants — el apoderado agenda en varios negocios y todas sus
+     * citas (identificadas por {@code cuenta_cliente_id}) aparecen en su panel. Mismo patrón
+     * anti-N+1: 3 queries (página + totales pagados + clientes para el link de WhatsApp).
+     */
+    @Transactional(readOnly = true)
+    public Page<ReservaResponse> listarReservasDeCliente(Long cuentaClienteId, EstadoReserva estado, Pageable pageable) {
+        Page<Reserva> pagina = estado == null
+                ? reservaRepository.findByCuentaClienteIdOrderByCreadaEnDesc(cuentaClienteId, pageable)
+                : reservaRepository.findByCuentaClienteIdAndEstadoOrderByCreadaEnDesc(cuentaClienteId, estado, pageable);
+        if (pagina.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        List<Long> reservaIds = pagina.map(Reserva::getId).toList();
+        Map<Long, Integer> pagados = pagoRepository.totalesPagadosPorReserva(reservaIds).stream()
+                .collect(Collectors.toMap(f -> (Long) f[0], f -> ((Number) f[1]).intValue()));
+        Map<Long, Cliente> clientes = clienteRepository
+                .findAllById(pagina.map(Reserva::getClienteId).toSet()).stream()
+                .collect(Collectors.toMap(Cliente::getId, c -> c));
+
+        return pagina.map(r -> {
+            Cliente cliente = clientes.get(r.getClienteId());
+            String link = cliente == null ? null : notificacion.linkWhatsApp(cliente, r);
+            return ReservaResponse.de(r, pagados.getOrDefault(r.getId(), 0), link);
+        });
+    }
+
     /** RF-06: dueño envía cotización (total + seña sugerida). */
     @Transactional
     public ReservaResponse cotizar(Long tenantId, Long id, CotizarRequest req) {
