@@ -1,9 +1,28 @@
 <script setup>
+import { useHead } from '@vueuse/head'
 import bgV2 from '../assets/login-bg-v2.webp'
 import charBalloon from '../assets/char-balloon.png'
 import charCake from '../assets/char-cake.png'
 import charHat from '../assets/char-hat.png'
 import BaseButton from '../components/BaseButton.vue'
+
+useHead({
+  title: 'ReservaKids — Reservas para cumpleaños infantiles en Chile',
+  meta: [
+    {
+      name: 'description',
+      content:
+        'Software de reservas online para negocios de cumpleaños infantiles. Catálogo, calendario, notificaciones y pagos por Mercado Pago.',
+    },
+    { property: 'og:title', content: 'ReservaKids — Reservas para cumpleaños infantiles' },
+    {
+      property: 'og:description',
+      content:
+        'Publica tus servicios, recibe solicitudes, cobra señas por Mercado Pago y gestiona tu calendario de cumpleaños infantiles.',
+    },
+    { property: 'og:type', content: 'website' },
+  ],
+})
 
 const features = [
   {

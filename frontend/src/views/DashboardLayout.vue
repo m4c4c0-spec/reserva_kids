@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
 import BaseModal from '../components/BaseModal.vue'
 import BaseToast from '../components/BaseToast.vue'
+import { puedeInstalar, instalar } from '../composables/usePwaInstall'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -17,6 +18,9 @@ const tabs = [
 ]
 
 const avisoEmail = ref(null)
+const toastMensaje = ref('')
+const toastTipo = ref('exito')
+
 onMounted(async () => {
   try {
     const { data } = await api.get('/sistema/notificaciones')
@@ -25,6 +29,16 @@ onMounted(async () => {
     /* sin aviso si el endpoint no responde */
   }
 })
+
+// PWA: prompt de instalación (Android/Chrome/Edge). iOS no dispara beforeinstallprompt;
+// el usuario debe usar "Compartir → Añadir a pantalla de inicio" (ver MANUAL_DESPLIEGUE.md).
+async function instalarApp() {
+  const ok = await instalar()
+  if (ok) {
+    toastMensaje.value = 'App instalada. Ábrela desde tu pantalla de inicio.'
+    toastTipo.value = 'exito'
+  }
+}
 
 async function salir() {
   try {
@@ -45,9 +59,6 @@ function descargarJson(data) {
   a.click()
   URL.revokeObjectURL(url)
 }
-
-const toastMensaje = ref('')
-const toastTipo = ref('exito')
 
 // Exportar datos
 async function exportarDatos() {
@@ -103,11 +114,21 @@ async function confirmarCierre() {
       <a
         :href="`/${auth.slug}`"
         target="_blank"
-        class="w-full bg-primary text-on-primary font-bold py-3 px-4 rounded-full shadow-soft hover:shadow-lifted hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 mb-6 flex items-center justify-center gap-1 text-sm"
+        class="w-full bg-primary text-on-primary font-bold py-3 px-4 rounded-full shadow-soft hover:shadow-lifted hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 mb-3 flex items-center justify-center gap-1 text-sm"
       >
         <span class="material-symbols-outlined text-[20px]">open_in_new</span>
         Ver mi página
       </a>
+
+      <button
+        v-if="puedeInstalar"
+        class="w-full bg-tertiary-fixed text-on-tertiary-fixed font-bold py-3 px-4 rounded-full shadow-soft hover:shadow-lifted hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 mb-6 flex items-center justify-center gap-1 text-sm"
+        @click="instalarApp"
+      >
+        <span class="material-symbols-outlined text-[20px]">install_mobile</span>
+        Instalar app
+      </button>
+      <div v-else class="mb-6" />
 
       <nav class="flex-1 space-y-1" role="navigation" aria-label="Navegación principal">
         <RouterLink
@@ -152,6 +173,7 @@ async function confirmarCierre() {
       <!-- Top bar (móvil) -->
       <header
         class="md:hidden sticky top-0 z-40 bg-surface-low/90 backdrop-blur-sm px-5 py-3 flex items-center justify-between"
+        style="padding-top: max(0.75rem, env(safe-area-inset-top))"
       >
         <div class="flex items-center gap-2 min-w-0">
           <div class="w-9 h-9 rounded-xl bg-primary-container flex items-center justify-center shrink-0">
@@ -160,6 +182,14 @@ async function confirmarCierre() {
           <h1 class="font-display font-bold text-primary truncate">{{ auth.nombreNegocio }}</h1>
         </div>
         <div class="flex items-center gap-1">
+          <button
+            v-if="puedeInstalar"
+            aria-label="Instalar app"
+            class="p-2 rounded-full hover:bg-surface-highest transition-colors active:scale-95"
+            @click="instalarApp"
+          >
+            <span class="material-symbols-outlined text-primary">install_mobile</span>
+          </button>
           <a
             :href="`/${auth.slug}`"
             target="_blank"
@@ -201,6 +231,7 @@ async function confirmarCierre() {
       <!-- Bottom nav (móvil) -->
       <nav
         class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface-low/95 backdrop-blur-sm border-t border-outline-variant/30 px-2 pt-2 pb-3 flex justify-around"
+        style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))"
         role="navigation"
         aria-label="Navegación móvil"
       >
