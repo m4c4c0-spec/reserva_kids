@@ -97,6 +97,20 @@ app:
     purga-dias-tras-cierre: ${TENANT_PURGA_DIAS:90}
   # El servidor corre en UTC; el negocio opera en hora chilena
   zona-horaria: ${APP_TIMEZONE:America/Santiago}
+  rate-limit:
+    # Límites por minuto por IP, según el patrón de la ruta. El webhook tiene el más estricto
+    # para mitigar flooding e IDOR contra la API de Mercado Pago. Los endpoints de auth tienen
+    # límites bajos para frustrar fuerza bruta.
+    public-max-por-minuto: ${RATE_LIMIT_PUBLIC:30}
+    auth-max-por-minuto: ${RATE_LIMIT_AUTH:10}
+    cliente-auth-max-por-minuto: ${RATE_LIMIT_CLIENTE_AUTH:10}
+    admin-auth-max-por-minuto: ${RATE_LIMIT_ADMIN_AUTH:5}
+    panel-max-por-minuto: ${RATE_LIMIT_PANEL:60}
+    webhook-max-por-minuto: ${RATE_LIMIT_WEBHOOK:5}
+  mercadopago:
+    # Anti-replay del webhook: una firma con timestamp más antiguo que este valor (minutos)
+    # se rechaza aunque el HMAC sea válido. Default 5; MP envía timestamps en segundos reales.
+    webhook-signature-max-age-minutes: ${MP_WEBHOOK_SIG_MAX_AGE_MINUTES:5}
   security:
     # Activar SOLO detrás de un reverse proxy (Caddy/nginx) que setee X-Forwarded-For
     trust-proxy: ${TRUST_PROXY:false}
