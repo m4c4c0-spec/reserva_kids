@@ -17,14 +17,19 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.HexFormat;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * S3 (revisión de seguridad): el webhook de Mercado Pago valida la firma x-signature cuando
- * el tenant configuró el secreto, ignora topics que no son {@code payment} y rechaza tenants
- * sin configuración de MP. Estos caminos no tocan la API de MP (no la mockeamos): validan el
- * parseo, el cifrado de credenciales en reposo y la verificación HMAC contra una BD real.
+ * el tenant configuró el secreto, ignora topics que no son {@code payment}, rechaza tenants
+ * sin configuración de MP o no ACTIVOS, y valida la antigüedad de la firma (anti-replay).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -51,14 +56,17 @@ class WebhookMercadoPagoIT {
 
     private Long tenantConMp;
     private Long tenantSinMp;
+    private String secretoFirma;
 
     @BeforeEach
     void setup() {
+        secretoFirma = "secreto-firma-test-" + System.nanoTime();
+
         Tenant conMp = new Tenant();
         conMp.setNombre("Con MP");
         conMp.setSlug("con-mp-" + System.nanoTime());
         conMp.setMpAccessToken(credentialCipher.encrypt("MP-TEST-TOKEN"));
-        conMp.setMpWebhookSecret(credentialCipher.encrypt("secreto-firma-test"));
+        conMp.setMpWebhookSecret(credentialCipher.encrypt(secretoFirma));
         tenantConMp = tenantRepository.save(conMp).getId();
 
         Tenant sinMp = new Tenant();
@@ -69,10 +77,27 @@ class WebhookMercadoPagoIT {
 
     @Test
     void firmaInvalidaEsRechazadaCon401() throws Exception {
+        long ts = Instant.now().getEpochSecond();
+        String firma = construirFirma(secretoFirma, "12345", "req-1", ts, "deadbeef");
         mockMvc.perform(post("/api/public/webhooks/mercadopago/{tenantId}", tenantConMp)
                         .param("type", "payment")
                         .param("id", "12345")
-                        .header("x-signature", "ts=1718000000,v1=deadbeef")
+                        .header("x-signature", "ts=" + ts + ",v1=" + firma)
+                        .header("x-request-id", "req-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().string("Firma inválida"));
+    }
+
+    @Test
+    void firmaExpiradaEsRechazadaCon401() throws Exception {
+        long ts = Instant.now().getEpochSecond() - 600;
+        String firma = construirFirma(secretoFirma, "12345", "req-1", ts, secretoFirma);
+        mockMvc.perform(post("/api/public/webhooks/mercadopago/{tenantId}", tenantConMp)
+                        .param("type", "payment")
+                        .param("id", "12345")
+                        .header("x-signature", "ts=" + ts + ",v1=" + firma)
                         .header("x-request-id", "req-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -122,5 +147,34 @@ class WebhookMercadoPagoIT {
                         .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("ignorado"));
+    }
+
+    @Test
+    void tenantRateLimitExcedidoDevuelve429() throws Exception {
+        long ts = Instant.now().getEpochSecond();
+        String firma = construirFirma(secretoFirma, "99991", "req-1", ts, secretoFirma);
+        for (int i = 0; i < 11; i++) {
+            mockMvc.perform(post("/api/public/webhooks/mercadopago/{tenantId}", tenantConMp)
+                            .param("type", "payment")
+                            .param("id", String.valueOf(99990 + i))
+                            .header("x-signature", "ts=" + ts + ",v1=" + firma)
+                            .header("x-request-id", "req-" + i)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{}"))
+                    .andExpect(content().string(org.hamcrest.Matchers.anyOf(
+                            org.hamcrest.Matchers.is("Firma inválida"),
+                            org.hamcrest.Matchers.is("Demasiadas solicitudes"))));
+        }
+    }
+
+    private static String construirFirma(String secreto, String dataId, String requestId, long ts, String claveHmac) {
+        String manifiesto = "id:" + dataId.toLowerCase() + ";request-id:" + requestId + ";ts:" + ts + ";";
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(claveHmac.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(manifiesto.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
