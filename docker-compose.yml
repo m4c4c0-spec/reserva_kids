@@ -41,6 +41,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:?definir en .env}
       # S1: clave para cifrar credenciales MP en reposo (vacía = derivada de JWT_SECRET)
       CRED_ENC_KEY: ${CRED_ENC_KEY:-}
+      # V18: bootstrap del administrador de plataforma. Vacíos = no se crea ningún admin.
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      ADMIN_BOOTSTRAP_NOMBRE: ${ADMIN_BOOTSTRAP_NOMBRE:-Administrador}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       # Dev corre en HTTP: las cookies Secure se descartarían, así que false aquí.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
@@ -65,6 +69,14 @@ services:
       WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
       RETENCION_CLIENTE_MESES: ${RETENCION_CLIENTE_MESES:-24}
       TENANT_PURGA_DIAS: ${TENANT_PURGA_DIAS:-90}
+      # Rate limiting (req/minuto por IP según ruta)
+      RATE_LIMIT_PUBLIC: ${RATE_LIMIT_PUBLIC:-30}
+      RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-10}
+      RATE_LIMIT_CLIENTE_AUTH: ${RATE_LIMIT_CLIENTE_AUTH:-10}
+      RATE_LIMIT_ADMIN_AUTH: ${RATE_LIMIT_ADMIN_AUTH:-5}
+      RATE_LIMIT_PANEL: ${RATE_LIMIT_PANEL:-60}
+      RATE_LIMIT_WEBHOOK: ${RATE_LIMIT_WEBHOOK:-5}
+      MP_WEBHOOK_SIG_MAX_AGE_MINUTES: ${MP_WEBHOOK_SIG_MAX_AGE_MINUTES:-5}
     ports:
       - "8080:8080"
     # Falla #8 (revisión 2 años): sin esto, una JVM muerta seguía "running" para Docker
