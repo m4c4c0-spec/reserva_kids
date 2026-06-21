@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.OffsetDateTime;
+
 /**
  * Administrador de plataforma (V18) — GLOBAL, sin tenant. Gobierna todos los negocios
  * (altas/bajas/suspensión, soporte, métricas). Distinto de {@link Usuario} (dueño de un
@@ -29,4 +31,7 @@ public class Administrador {
 
     @Column(nullable = false)
     private String nombre;
+
+    @Column(name = "creado_en", nullable = false, updatable = false, insertable = false)
+    private OffsetDateTime creadoEn;
 }
