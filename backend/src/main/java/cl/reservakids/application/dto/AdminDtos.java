@@ -2,6 +2,7 @@ package cl.reservakids.application.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.time.OffsetDateTime;
 
@@ -27,4 +28,16 @@ public final class AdminDtos {
             long negociosTotal, long negociosActivos, long negociosSuspendidos, long negociosCerrados,
             long reservasTotal, long reservasActivas,
             long apoderados, long recaudadoSenasClp) {}
+
+    /** Entrada de la bitácora de acciones (F5). */
+    public record AuditoriaItem(OffsetDateTime creadoEn, String adminEmail, String accion, String detalle) {}
+
+    /** Administrador en el listado de gestión multi-admin (F5). Nunca expone el hash. */
+    public record AdminResumen(Long id, String email, String nombre, OffsetDateTime creadoEn) {}
+
+    /** Alta de un nuevo administrador por otro admin (F5). */
+    public record CrearAdminRequest(
+            @NotBlank @Size(max = 120) String nombre,
+            @NotBlank @Email @Size(max = 160) String email,
+            @NotBlank @Size(min = 8, max = 72) String password) {}
 }

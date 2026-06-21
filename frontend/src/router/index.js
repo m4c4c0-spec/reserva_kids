@@ -64,6 +64,8 @@ const router = createRouter({
         { path: '', redirect: '/admin/metricas' },
         { path: 'metricas', component: () => import('../views/AdminMetricasView.vue') },
         { path: 'negocios', component: () => import('../views/AdminNegociosView.vue') },
+        { path: 'auditoria', component: () => import('../views/AdminAuditoriaView.vue') },
+        { path: 'administradores', component: () => import('../views/AdminAdminsView.vue') },
       ],
     },
     { path: '/404', component: () => import('../views/NotFoundView.vue') },
