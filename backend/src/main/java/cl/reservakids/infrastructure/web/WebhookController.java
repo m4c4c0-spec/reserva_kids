@@ -9,8 +9,8 @@ import com.mercadopago.core.MPRequestOptions;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
 import com.mercadopago.resources.payment.Payment;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,12 +19,14 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @RestController
 @RequestMapping("/api/public/webhooks/mercadopago")
-@RequiredArgsConstructor
 @Slf4j
 public class WebhookController {
 
@@ -32,8 +34,25 @@ public class WebhookController {
     private final TenantRepository tenantRepository;
     private final CredentialCipher credentialCipher;
 
-    /** Respuesta 200 deliberada para eventos que no hay que procesar: evita reintentos de MP. */
     private static final String IGNORADO = "ignorado";
+
+    /** Per-tenant webhook rate limit: evita que un atacante fuerce llamadas a la API de MP iterando tenantIds. */
+    private static final int MAX_WEBHOOKS_TENANT_POR_MINUTO = 10;
+    private final Map<Long, WebhookBucket> contadorPorTenant = new ConcurrentHashMap<>();
+
+    /** Ventana de validez de la firma del webhook en segundos — anti-replay. */
+    @Value("${app.mercadopago.webhook-signature-max-age-minutes:5}")
+    private int signatureMaxAgeMinutes;
+
+    public WebhookController(ReservaService reservaService,
+                             TenantRepository tenantRepository,
+                             CredentialCipher credentialCipher) {
+        this.reservaService = reservaService;
+        this.tenantRepository = tenantRepository;
+        this.credentialCipher = credentialCipher;
+    }
+
+    private record WebhookBucket(long epochMinuto, AtomicInteger contador) {}
 
     @PostMapping("/{tenantId}")
     public ResponseEntity<String> recibirWebhook(
@@ -46,33 +65,47 @@ public class WebhookController {
             @RequestHeader(name = "x-request-id", required = false) String xRequestId,
             @RequestBody(required = false) Map<String, Object> body) {
 
-        log.info("Webhook recibido de MP para tenant {}: topic={}, type={}, id={}", tenantId, topic, type, id);
+        log.debug("Webhook MP para tenant {}: topic={}, type={}, id={}", tenantId, topic, type, id);
 
-        // MP manda el tipo/id como 'topic'/'type' e 'id'/'data.id', en query o en el body.
         String tipo = resolverTipo(topic, type, body);
         String dataId = resolverDataId(dataIdParam, id, body);
 
         if (!"payment".equals(tipo) || dataId == null) {
-            return ResponseEntity.ok(IGNORADO); // Respondemos OK rápido
+            return ResponseEntity.ok(IGNORADO);
         }
-        // Un id no numérico jamás va a resolverse: responder 200 para que MP no
-        // lo reintente eternamente (un 500 aquí = retry loop infinito).
         Long paymentId = parsearLongOrNull(dataId);
         if (paymentId == null) {
             log.warn("Webhook MP con data.id no numérico: {}", dataId);
             return ResponseEntity.ok(IGNORADO);
         }
 
+        if (rateLimitExcedido(tenantId)) {
+            log.warn("Webhook MP tenant {}: rate limit excedido — rechazado", tenantId);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("Demasiadas solicitudes");
+        }
+
         try {
             return procesarEventoPago(tenantId, paymentId, dataId, xRequestId, xSignature);
         } catch (MPException | MPApiException e) {
             log.error("Error al procesar webhook de MP: {}", e.getMessage(), e);
-            // Si retornamos 500, MP lo reintentará más tarde
             return ResponseEntity.internalServerError().body("Error interno");
         }
     }
 
-    /** Tipo del evento: 'topic'/'type' del query, o del body ('type'/'topic'). */
+    private boolean rateLimitExcedido(Long tenantId) {
+        long minutoActual = Instant.now().getEpochSecond() / 60;
+        WebhookBucket bucket = contadorPorTenant.compute(tenantId, (k, v) -> {
+            if (v == null || v.epochMinuto() != minutoActual) {
+                return new WebhookBucket(minutoActual, new AtomicInteger());
+            }
+            return v;
+        });
+        if (contadorPorTenant.size() > 500) {
+            contadorPorTenant.entrySet().removeIf(e -> e.getValue().epochMinuto() != minutoActual);
+        }
+        return bucket.contador().incrementAndGet() > MAX_WEBHOOKS_TENANT_POR_MINUTO;
+    }
+
     private static String resolverTipo(String topic, String type, Map<String, Object> body) {
         if (topic != null) {
             return topic;
@@ -87,7 +120,6 @@ public class WebhookController {
         return (String) (t != null ? t : body.get("topic"));
     }
 
-    /** Id del recurso: 'data.id'/'id' del query, o 'data.id' anidado en el body. */
     private static String resolverDataId(String dataIdParam, String id, Map<String, Object> body) {
         String dataId = dataIdParam != null ? dataIdParam : id;
         if (dataId != null || body == null) {
@@ -99,21 +131,19 @@ public class WebhookController {
         return null;
     }
 
-    /**
-     * Valida firma (si hay secreto), consulta el pago real a MP con el token del tenant
-     * (cifrado en reposo, S1) y delega el procesamiento. Devuelve la respuesta a MP.
-     */
     private ResponseEntity<String> procesarEventoPago(Long tenantId, long paymentId, String dataId,
-                                                      String xRequestId, String xSignature)
+                                                       String xRequestId, String xSignature)
             throws MPException, MPApiException {
         Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
-        if (tenant == null || tenant.getMpAccessToken() == null) {
-            log.warn("Tenant {} no encontrado o sin MP access token", tenantId);
+        if (tenant == null || !"ACTIVO".equals(tenant.getEstado())) {
+            log.warn("Webhook MP: tenant {} no encontrado o no ACTIVO", tenantId);
+            return ResponseEntity.badRequest().body("Configuracion MP no encontrada");
+        }
+        if (tenant.getMpAccessToken() == null) {
+            log.warn("Webhook MP: tenant {} sin MP access token", tenantId);
             return ResponseEntity.badRequest().body("Configuracion MP no encontrada");
         }
 
-        // S3: si el tenant configuró el secreto de firma, validamos x-signature ANTES de
-        // gastar una llamada a la API de MP. Un webhook forjado se rechaza aquí (401).
         if (tenant.getMpWebhookSecret() != null) {
             String secreto = credentialCipher.decrypt(tenant.getMpWebhookSecret());
             if (!firmaValida(secreto, dataId, xRequestId, xSignature)) {
@@ -127,8 +157,6 @@ public class WebhookController {
                 .build();
         Payment payment = new PaymentClient().get(paymentId, requestOptions);
 
-        // Sin monto o sin referencia válida no hay nada que registrar — y un NPE/
-        // NumberFormatException aquí terminaba en 500 → MP reintentando para siempre.
         if (payment.getTransactionAmount() == null || payment.getExternalReference() == null) {
             log.warn("Pago {} sin transaction_amount o sin external_reference", dataId);
             return ResponseEntity.ok(IGNORADO);
@@ -143,12 +171,6 @@ public class WebhookController {
         return ResponseEntity.ok("ok");
     }
 
-    /**
-     * Parsea un Long o devuelve {@code null} si no es numérico, en vez de propagar la
-     * excepción. Permite resolver el "id no resoluble" con un 200 fuera del catch (un 2xx
-     * dentro de un catch enmascara errores — Sonar java:S6863); aquí el 200 es deliberado
-     * para que Mercado Pago no reintente eternamente un id que nunca va a resolverse.
-     */
     private static Long parsearLongOrNull(String valor) {
         try {
             return Long.parseLong(valor);
@@ -157,12 +179,6 @@ public class WebhookController {
         }
     }
 
-    /**
-     * S3: valida el header x-signature de Mercado Pago.
-     * Formato del header: {@code ts=<timestamp>,v1=<hmac_sha256_hex>}.
-     * El manifiesto firmado es {@code id:<data.id>;request-id:<x-request-id>;ts:<ts>;}
-     * (HMAC-SHA256 con el secreto de firma del tenant). Comparación en tiempo constante.
-     */
     private boolean firmaValida(String secreto, String dataId, String xRequestId, String xSignature) {
         if (secreto == null || secreto.isBlank() || xSignature == null) {
             return false;
@@ -172,7 +188,23 @@ public class WebhookController {
         if (ts == null || v1 == null) {
             return false;
         }
-        // MP normaliza a minúsculas los id alfanuméricos; los de pago son numéricos (sin efecto)
+
+        long tsEpoch;
+        try {
+            tsEpoch = Long.parseLong(ts);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        long ahora = Instant.now().getEpochSecond();
+        long edadSegundos = ahora - tsEpoch;
+        if (edadSegundos < 0) {
+            return false;
+        }
+        if (edadSegundos > (long) signatureMaxAgeMinutes * 60) {
+            log.warn("Webhook MP: firma expirada ({}s de edad, max {} min)", edadSegundos, signatureMaxAgeMinutes);
+            return false;
+        }
+
         String manifiesto = "id:" + dataId.toLowerCase() + ";request-id:"
                 + (xRequestId == null ? "" : xRequestId) + ";ts:" + ts + ";";
         try {
@@ -188,7 +220,6 @@ public class WebhookController {
         }
     }
 
-    /** Extrae el valor de una clave (ts / v1) del header x-signature, separado por comas. */
     private static String extraerParte(String xSignature, String clave) {
         for (String parte : xSignature.split(",")) {
             String[] kv = parte.split("=", 2);

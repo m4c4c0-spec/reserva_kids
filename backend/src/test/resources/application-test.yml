@@ -30,6 +30,15 @@ app:
   tenants:
     purga-dias-tras-cierre: 90
   zona-horaria: America/Santiago
+  rate-limit:
+    public-max-por-minuto: 30
+    auth-max-por-minuto: 10
+    cliente-auth-max-por-minuto: 10
+    admin-auth-max-por-minuto: 5
+    panel-max-por-minuto: 60
+    webhook-max-por-minuto: 5
+  mercadopago:
+    webhook-signature-max-age-minutes: 5
   security:
     trust-proxy: false
     cred-key: ""
