@@ -8,6 +8,8 @@ const auth = useAdminAuthStore()
 const tabs = [
   { to: '/admin/metricas', label: 'Métricas', icon: 'monitoring' },
   { to: '/admin/negocios', label: 'Negocios', icon: 'storefront' },
+  { to: '/admin/auditoria', label: 'Bitácora', icon: 'history' },
+  { to: '/admin/administradores', label: 'Admins', icon: 'shield_person' },
 ]
 
 async function salir() {

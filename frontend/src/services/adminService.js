@@ -20,4 +20,13 @@ export const adminService = {
   reactivar(id) {
     return adminApi.post(`/admin/negocios/${id}/reactivar`).then((r) => r.data)
   },
+  auditoria(limite = 50) {
+    return adminApi.get('/admin/auditoria', { params: { limite } }).then((r) => r.data)
+  },
+  listarAdmins() {
+    return adminApi.get('/admin/administradores').then((r) => r.data)
+  },
+  crearAdmin(payload) {
+    return adminApi.post('/admin/administradores', payload).then((r) => r.data)
+  },
 }

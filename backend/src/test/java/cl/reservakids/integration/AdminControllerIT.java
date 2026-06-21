@@ -119,6 +119,34 @@ class AdminControllerIT {
     }
 
     @Test
+    void suspenderQuedaRegistradoEnLaBitacora() throws Exception {
+        Long id = crearTenant(Tenant.ESTADO_ACTIVO);
+        String token = accessToken();
+        mockMvc.perform(post("/api/admin/negocios/{id}/suspender", id)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/auditoria").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].accion").value("SUSPENDER_NEGOCIO"))
+                .andExpect(jsonPath("$[0].adminEmail").value(ADMIN_EMAIL));
+    }
+
+    @Test
+    void altaDeOtroAdminYListado() throws Exception {
+        String token = accessToken();
+        String nuevo = "nuevo-" + System.nanoTime() + "@reservakids.cl";
+        mockMvc.perform(post("/api/admin/administradores")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"Nuevo\",\"email\":\"" + nuevo + "\",\"password\":\"password123\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.email").value(nuevo));
+        mockMvc.perform(get("/api/admin/administradores").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.email == '" + nuevo + "')]").exists());
+    }
+
+    @Test
     void filtraPorEstado() throws Exception {
         Long suspendido = crearTenant(Tenant.ESTADO_SUSPENDIDO);
         mockMvc.perform(get("/api/admin/negocios").param("estado", "SUSPENDIDO")

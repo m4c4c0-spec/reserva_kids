@@ -1,9 +1,16 @@
 package cl.reservakids.infrastructure.web;
 
+import cl.reservakids.application.dto.AdminDtos.AdminResumen;
+import cl.reservakids.application.dto.AdminDtos.AuditoriaItem;
+import cl.reservakids.application.dto.AdminDtos.CrearAdminRequest;
 import cl.reservakids.application.dto.AdminDtos.MetricasGlobales;
 import cl.reservakids.application.dto.AdminDtos.NegocioAdminResumen;
 import cl.reservakids.application.usecase.AdminService;
+import cl.reservakids.infrastructure.security.AuthPrincipal;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -38,12 +45,31 @@ public class AdminController {
     }
 
     @PostMapping("/negocios/{id}/suspender")
-    public NegocioAdminResumen suspender(@PathVariable Long id) {
-        return adminService.suspender(id);
+    public NegocioAdminResumen suspender(@PathVariable Long id, @AuthenticationPrincipal AuthPrincipal admin) {
+        return adminService.suspender(id, admin.usuarioId());
     }
 
     @PostMapping("/negocios/{id}/reactivar")
-    public NegocioAdminResumen reactivar(@PathVariable Long id) {
-        return adminService.reactivar(id);
+    public NegocioAdminResumen reactivar(@PathVariable Long id, @AuthenticationPrincipal AuthPrincipal admin) {
+        return adminService.reactivar(id, admin.usuarioId());
+    }
+
+    // ── F5: bitácora + gestión multi-admin ──
+
+    @GetMapping("/auditoria")
+    public List<AuditoriaItem> auditoria(@RequestParam(defaultValue = "50") int limite) {
+        return adminService.auditoria(limite);
+    }
+
+    @GetMapping("/administradores")
+    public List<AdminResumen> administradores() {
+        return adminService.listarAdmins();
+    }
+
+    @PostMapping("/administradores")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AdminResumen crearAdmin(@Valid @RequestBody CrearAdminRequest req,
+                                   @AuthenticationPrincipal AuthPrincipal admin) {
+        return adminService.crearAdmin(req, admin.usuarioId());
     }
 }
