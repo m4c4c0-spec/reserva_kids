@@ -24,13 +24,19 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final MdcFilter mdcFilter;
+    private final SecurityHeadersFilter securityHeadersFilter;
+    private final CsrfFilter csrfFilter;
 
     @Value("${app.cors.allowed-origins}")
     private List<String> allowedOrigins;
 
+    @Value("${app.security.bcrypt-strength:12}")
+    private int bcryptStrength;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(10); // RNF-02: bcrypt ≥10 rounds
+        return new BCryptPasswordEncoder(bcryptStrength); // RNF-02: bcrypt ≥12 rounds (OWASP 2023+)
     }
 
     @Bean
@@ -61,6 +67,9 @@ public class SecurityConfig {
                         // endpoints de negocio (con tenantId null → errores). Ahora exige DUENO.
                         .requestMatchers("/api/**").hasRole("DUENO")
                         .anyRequest().denyAll())
+                .addFilterBefore(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(csrfFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(mdcFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();

@@ -76,44 +76,84 @@ const tiers = [
 
 <template>
   <main class="min-h-screen bg-surface bg-cover bg-center" :style="{ backgroundImage: `url(${bgV2})` }">
-    <!-- Hero -->
+    <!-- Hero + selector de rol (dueño vs cliente) -->
     <section class="relative overflow-hidden">
-      <div class="max-w-5xl mx-auto px-5 py-16 md:py-24 text-center relative z-10">
+      <div class="max-w-4xl mx-auto px-5 py-12 md:py-16 text-center relative z-10">
         <div class="flex justify-center gap-4 mb-6">
           <img
             :src="charBalloon"
             alt=""
-            class="w-20 h-20 md:w-28 md:h-28 object-contain character-img animate-floating drop-shadow-xl"
+            class="w-16 h-16 md:w-24 md:h-24 object-contain character-img animate-floating drop-shadow-xl"
             aria-hidden="true"
           />
           <img
             :src="charCake"
             alt=""
-            class="w-20 h-20 md:w-28 md:h-28 object-contain character-img animate-floating-delayed drop-shadow-xl"
+            class="w-16 h-16 md:w-24 md:h-24 object-contain character-img animate-floating-delayed drop-shadow-xl"
             aria-hidden="true"
           />
           <img
             :src="charHat"
             alt=""
-            class="w-20 h-20 md:w-28 md:h-28 object-contain character-img animate-floating drop-shadow-xl"
+            class="w-16 h-16 md:w-24 md:h-24 object-contain character-img animate-floating drop-shadow-xl"
             aria-hidden="true"
           />
         </div>
-        <h1 class="font-display font-extrabold text-4xl md:text-6xl tracking-tight text-primary leading-tight">
+        <h1 class="font-display font-extrabold text-3xl md:text-5xl tracking-tight text-primary leading-tight">
           Reservas para cumpleaños infantiles
         </h1>
-        <p class="font-medium text-lg md:text-xl text-on-surface-variant mt-4 max-w-2xl mx-auto">
-          La plataforma SaaS que centraliza catálogo, calendario, cotizaciones y pagos para negocios de fiestas
-          infantiles.
-        </p>
-        <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
-          <BaseButton variante="primario" class="px-8 py-3 text-base" @click="$router.push('/login')">
-            Soy negocio — Entrar
-          </BaseButton>
-          <BaseButton variante="secundario" class="px-8 py-3 text-base" @click="$router.push('/clientes/entrar')">
-            Soy cliente — Reservar
-          </BaseButton>
+
+        <!-- Pregunta guía: una sola decisión, en lenguaje simple -->
+        <p class="font-display font-bold text-xl md:text-2xl text-on-surface mt-8">¿Qué quieres hacer?</p>
+
+        <div class="grid gap-4 sm:grid-cols-2 mt-5 text-left">
+          <!-- Camino CLIENTE (primario emocional: la mayoría que llega es a reservar) -->
+          <button
+            class="group bg-surface-lowest rounded-3xl shadow-soft border-2 border-primary/30 p-6 flex flex-col items-start gap-3 transition-all hover:shadow-lifted hover:-translate-y-1 hover:border-primary focus:outline-none focus:ring-4 focus:ring-primary-container"
+            @click="$router.push('/negocios')"
+          >
+            <div class="w-16 h-16 rounded-2xl bg-primary-container flex items-center justify-center">
+              <span class="material-symbols-outlined text-3xl text-on-primary-container">celebration</span>
+            </div>
+            <h2 class="font-display font-extrabold text-xl text-on-surface">Quiero reservar una fiesta</h2>
+            <p class="text-sm font-medium text-on-surface-variant">
+              Para papás y mamás: mira precios y horas disponibles y reserva el cumpleaños de tu hijo o hija.
+            </p>
+            <span
+              class="mt-auto inline-flex items-center gap-1 font-bold text-primary group-hover:gap-2 transition-all"
+            >
+              Reservar una fiesta
+              <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+            </span>
+          </button>
+
+          <!-- Camino DUEÑO -->
+          <button
+            class="group bg-surface-lowest rounded-3xl shadow-soft border-2 border-outline-variant/20 p-6 flex flex-col items-start gap-3 transition-all hover:shadow-lifted hover:-translate-y-1 hover:border-secondary focus:outline-none focus:ring-4 focus:ring-secondary-container"
+            @click="$router.push('/login')"
+          >
+            <div class="w-16 h-16 rounded-2xl bg-secondary-container flex items-center justify-center">
+              <span class="material-symbols-outlined text-3xl text-on-secondary-container">storefront</span>
+            </div>
+            <h2 class="font-display font-extrabold text-xl text-on-surface">Tengo un negocio de fiestas</h2>
+            <p class="text-sm font-medium text-on-surface-variant">
+              Publica tus servicios, recibe reservas, organiza tu calendario y cobra las señas online.
+            </p>
+            <span
+              class="mt-auto inline-flex items-center gap-1 font-bold text-secondary group-hover:gap-2 transition-all"
+            >
+              Entrar o crear mi negocio
+              <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+            </span>
+          </button>
         </div>
+
+        <!-- Camino sin cuenta: el link directo del negocio NO exige registro.
+             Lo hacemos explícito para no empujar a todos al muro de login. -->
+        <p class="text-sm font-medium text-on-surface-variant mt-5 flex items-center justify-center gap-1.5">
+          <span class="material-symbols-outlined text-[18px] text-outline">link</span>
+          ¿El negocio te pasó un link? Ábrelo directamente para reservar sin crear cuenta.
+        </p>
       </div>
     </section>
 

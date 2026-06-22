@@ -100,21 +100,21 @@ async function confirmarCierre() {
 <template>
   <div class="min-h-screen bg-surface flex">
     <!-- Sidebar (desktop) -->
-    <aside class="hidden md:flex flex-col h-screen p-4 fixed left-0 top-0 w-64 bg-surface-low z-40">
+    <aside class="hidden md:flex flex-col h-screen p-4 fixed left-0 top-0 w-64 bg-[#21094e] text-white z-40 shadow-2xl">
       <div class="flex items-center gap-3 mb-8 px-3 pt-4">
-        <div class="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center shadow-soft">
-          <span class="material-symbols-outlined text-on-primary-container">celebration</span>
+        <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shadow-soft backdrop-blur-md">
+          <span class="material-symbols-outlined text-white">celebration</span>
         </div>
         <div class="min-w-0">
-          <h1 class="font-display font-bold text-primary text-lg leading-tight truncate">{{ auth.nombreNegocio }}</h1>
-          <p class="text-xs font-bold text-on-surface-variant">ReservaKids</p>
+          <h1 class="font-display font-bold text-white text-lg leading-tight truncate">{{ auth.nombreNegocio }}</h1>
+          <p class="text-xs font-bold text-white/60">ReservaKids</p>
         </div>
       </div>
 
       <a
         :href="`/${auth.slug}`"
         target="_blank"
-        class="w-full bg-primary text-on-primary font-bold py-3 px-4 rounded-full shadow-soft hover:shadow-lifted hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 mb-3 flex items-center justify-center gap-1 text-sm"
+        class="w-full bg-white/10 text-white font-bold py-3 px-4 rounded-full shadow-soft hover:bg-white/20 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 mb-3 flex items-center justify-center gap-1 text-sm border border-white/10"
       >
         <span class="material-symbols-outlined text-[20px]">open_in_new</span>
         Ver mi página
@@ -130,36 +130,36 @@ async function confirmarCierre() {
       </button>
       <div v-else class="mb-6" />
 
-      <nav class="flex-1 space-y-1" role="navigation" aria-label="Navegación principal">
+      <nav class="flex-1 space-y-2 mt-4" role="navigation" aria-label="Navegación principal">
         <RouterLink
           v-for="t in tabs"
           :key="t.to"
           :to="t.to"
-          class="flex items-center gap-4 text-on-surface-variant px-4 py-3 hover:bg-surface-highest rounded-xl transition-all font-bold text-sm"
-          active-class="!bg-primary-container !text-on-primary-container shadow-sm"
+          class="flex items-center gap-4 text-white/70 px-4 py-3 hover:bg-white/10 hover:text-white rounded-xl transition-all font-bold text-sm"
+          active-class="!bg-white/20 !text-white shadow-sm backdrop-blur-md"
         >
           <span class="material-symbols-outlined">{{ t.icon }}</span>
           <span>{{ t.label }}</span>
         </RouterLink>
       </nav>
 
-      <div class="mt-auto pt-6 border-t border-outline-variant/30 space-y-1">
+      <div class="mt-auto pt-6 border-t border-white/10 space-y-1">
         <button
-          class="w-full flex items-center gap-4 text-on-surface-variant px-4 py-2.5 hover:bg-surface-highest rounded-xl transition-all font-bold text-sm"
+          class="w-full flex items-center gap-4 text-white/70 px-4 py-2.5 hover:bg-white/10 hover:text-white rounded-xl transition-all font-bold text-sm"
           @click="exportarDatos"
         >
           <span class="material-symbols-outlined">download</span>
           Exportar mis datos
         </button>
         <button
-          class="w-full flex items-center gap-4 text-on-surface-variant px-4 py-2.5 hover:bg-error-container hover:text-on-error-container rounded-xl transition-all font-bold text-sm"
+          class="w-full flex items-center gap-4 text-white/70 px-4 py-2.5 hover:bg-red-500/20 hover:text-red-300 rounded-xl transition-all font-bold text-sm"
           @click="abrirCerrarNegocio"
         >
           <span class="material-symbols-outlined">door_open</span>
           Cerrar negocio
         </button>
         <button
-          class="w-full flex items-center gap-4 text-on-surface-variant px-4 py-2.5 hover:bg-surface-highest rounded-xl transition-all font-bold text-sm"
+          class="w-full flex items-center gap-4 text-white/70 px-4 py-2.5 hover:bg-white/10 hover:text-white rounded-xl transition-all font-bold text-sm"
           @click="salir"
         >
           <span class="material-symbols-outlined">logout</span>
@@ -217,7 +217,7 @@ async function confirmarCierre() {
         directamente en el panel y la configuración SMTP.
       </div>
 
-      <main class="flex-1 w-full max-w-5xl mx-auto p-5 md:p-8 pb-28 md:pb-8">
+      <main class="flex-1 w-full max-w-5xl mx-auto p-5 md:p-8 pb-28 md:pb-8 dashboard-grandes">
         <RouterView />
       </main>
 

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.YearMonth;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -41,7 +42,16 @@ public class PublicController {
         List<ServicioResponse> servicios = servicioRepository
                 .findByTenantIdAndActivoTrueOrderByNombre(tenant.getId())
                 .stream().map(ServicioResponse::de).toList();
-        return Map.of("nombre", tenant.getNombre(), "slug", tenant.getSlug(), "servicios", servicios);
+        // V26: teléfono de WhatsApp del salón para el botón flotante "¿Dudas? Habla con el
+        // dueño". Lo el dueño en su panel; si no lo configuró no aparece el botón.
+        Map<String, Object> body = new HashMap<>();
+        body.put("nombre", tenant.getNombre());
+        body.put("slug", tenant.getSlug());
+        body.put("servicios", servicios);
+        if (tenant.getTelefonoContacto() != null && !tenant.getTelefonoContacto().isBlank()) {
+            body.put("whatsapp", tenant.getTelefonoContacto());
+        }
+        return body;
     }
 
     @GetMapping("/disponibilidad")

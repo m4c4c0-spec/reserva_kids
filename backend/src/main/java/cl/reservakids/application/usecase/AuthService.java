@@ -1,9 +1,12 @@
 package cl.reservakids.application.usecase;
 
 import cl.reservakids.application.dto.AuthDtos.*;
+import cl.reservakids.domain.model.AuthEvent;
+import cl.reservakids.domain.model.PasswordResetToken;
 import cl.reservakids.domain.model.RefreshToken;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.model.Usuario;
+import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.domain.repository.UsuarioRepository;
@@ -31,10 +34,16 @@ public class AuthService {
     private final TenantRepository tenantRepository;
     private final UsuarioRepository usuarioRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final HorarioAtencionService horarioAtencionService;
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
+    private final AuthEventPort authEvent;
+    private final NotificacionPort notificacion;
     private final SecureRandom secureRandom = new SecureRandom();
+
+    @Value("${app.magic-link.minutos:10}")
+    private long magicLinkMinutos;
 
     @Value("${app.jwt.refresh-days}")
     private long refreshDays;
@@ -78,18 +87,89 @@ public class AuthService {
         usuario.setPasswordHash(passwordEncoder.encode(req.password()));
         usuarioRepository.save(usuario);
 
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS, "Registro de nuevo negocio: " + req.slug());
         return emitirTokens(usuario, tenant);
     }
 
     @Transactional
     public TokenResponse login(LoginRequest req) {
-        Usuario usuario = usuarioRepository.findByEmail(AuthCrypto.normalizarEmail(req.email()))
-                .orElseThrow(() -> new BadCredentialsException("Credenciales inválidas"));
+        String email = AuthCrypto.normalizarEmail(req.email());
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> {
+                    authEvent.registrar(AuthEvent.ACTOR_DUENO, null, email,
+                            AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Email no registrado");
+                    return new BadCredentialsException("Credenciales inválidas");
+                });
         if (!passwordEncoder.matches(req.password(), usuario.getPasswordHash())) {
+            authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                    AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Contraseña incorrecta");
             throw new BadCredentialsException("Credenciales inválidas");
         }
         Tenant tenant = tenantRepository.findById(usuario.getTenantId()).orElseThrow();
         verificarTenantOperativo(tenant);
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS, null);
+        return emitirTokens(usuario, tenant);
+    }
+
+    /**
+     * V27: solicita un magic link de login sin contraseña. SIEMPRE silencioso (204) — el
+     * endpoint es público y revelar si el email existe permitiría enumerar cuentas. Solo
+     * crea el token y manda el correo si el usuario existe Y su tenant está ACTIVO; si no,
+     * no hace nada (anti-enumeración, igual que {@link PasswordResetService#solicitarResetPassword}).
+     */
+    @Transactional
+    public void solicitarMagicLink(String email) {
+        String emailNorm = AuthCrypto.normalizarEmail(email);
+        if (emailNorm == null) return;
+        usuarioRepository.findByEmail(emailNorm).ifPresent(usuario -> {
+            Tenant tenant = tenantRepository.findById(usuario.getTenantId()).orElseThrow();
+            if (!tenant.isActivo()) return;
+            passwordResetTokenRepository.invalidarVigentesDeUsuarioAndTipo(
+                    usuario.getId(), PasswordResetToken.TIPO_MAGIC);
+
+            byte[] bytes = new byte[48];
+            secureRandom.nextBytes(bytes);
+            String tokenPlano = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+
+            PasswordResetToken token = new PasswordResetToken();
+            token.setId(UUID.randomUUID());
+            token.setUsuarioId(usuario.getId());
+            token.setTokenHash(AuthCrypto.sha256(tokenPlano));
+            token.setExpiraEn(OffsetDateTime.now().plusMinutes(magicLinkMinutos));
+            token.setTipo(PasswordResetToken.TIPO_MAGIC);
+            passwordResetTokenRepository.save(token);
+
+            notificacion.magicLink(usuario, tokenPlano); // AFTER_COMMIT en el adaptador
+        });
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, null, emailNorm,
+                AuthEvent.MAGIC_LINK_REQUEST, AuthEvent.SUCCESS, null);
+    }
+
+    /**
+     * V27: canjea un magic link. Mismo flujo que el login pero sin contraseña: valida el token
+     * (de tipo MAGIC, vigente, no usado), lo marca usado y emite tokens. Emite el audit con
+     * el actor que tiene el token (post-validación), así distinguimos magic-link correcto
+     * de fallido sin enumerar emails en la respuesta.
+     */
+    @Transactional
+    public TokenResponse entrarConMagicLink(String tokenPlano) {
+        PasswordResetToken token = passwordResetTokenRepository
+                .findByTokenHashAndTipo(AuthCrypto.sha256(tokenPlano), PasswordResetToken.TIPO_MAGIC)
+                .filter(t -> t.vigente(OffsetDateTime.now()))
+                .orElseThrow(() -> {
+                    authEvent.registrar(AuthEvent.ACTOR_DUENO, null, "id:?",
+                            AuthEvent.MAGIC_LOGIN, AuthEvent.FAILURE, "Token inválido o vencido");
+                    return new BadCredentialsException("El enlace es inválido o ya venció; pide uno nuevo");
+                });
+        token.setUsado(true);
+
+        Usuario usuario = usuarioRepository.findById(token.getUsuarioId()).orElseThrow();
+        Tenant tenant = tenantRepository.findById(usuario.getTenantId()).orElseThrow();
+        verificarTenantOperativo(tenant);
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), usuario.getEmail(),
+                AuthEvent.MAGIC_LOGIN, AuthEvent.SUCCESS, "Login con magic link");
         return emitirTokens(usuario, tenant);
     }
 
@@ -105,6 +185,9 @@ public class AuthService {
                 .orElseThrow(() -> new BadCredentialsException("Refresh token inválido o expirado"));
         if (actual.isRevocado()) {
             refreshTokenRepository.revocarTodosDeUsuario(actual.getUsuarioId());
+            authEvent.registrar(AuthEvent.ACTOR_DUENO, actual.getUsuarioId(), "id:" + actual.getUsuarioId(),
+                    AuthEvent.THEFT_DETECTED, AuthEvent.FAILURE,
+                    "Token ya rotado reusado — posible robo, sesiones revocadas");
             throw new BadCredentialsException("Refresh token inválido o expirado");
         }
         if (!actual.getExpiraEn().isAfter(OffsetDateTime.now())) {
@@ -117,6 +200,8 @@ public class AuthService {
         // Offboarding (falla 3.3): el noRollbackFor de arriba hace que la rotación ya
         // ejecutada se COMMITEE — el refresh de un tenant suspendido/cerrado se quema al usarse.
         verificarTenantOperativo(tenant);
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), usuario.getEmail(),
+                AuthEvent.REFRESH, AuthEvent.SUCCESS, null);
         return emitirTokens(usuario, tenant);
     }
 
@@ -143,6 +228,8 @@ public class AuthService {
     public void logout(Long usuarioId, String refreshToken) {
         if (usuarioId != null) {
             refreshTokenRepository.revocarTodosDeUsuario(usuarioId);
+            authEvent.registrar(AuthEvent.ACTOR_DUENO, usuarioId, "id:" + usuarioId,
+                    AuthEvent.LOGOUT, AuthEvent.SUCCESS, null);
         }
         if (refreshToken != null && !refreshToken.isBlank()) {
             refreshTokenRepository.findByTokenHash(AuthCrypto.sha256(refreshToken))

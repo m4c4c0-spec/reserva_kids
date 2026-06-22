@@ -2,6 +2,7 @@ package cl.reservakids.application;
 
 import cl.reservakids.application.dto.AdminDtos;
 import cl.reservakids.application.usecase.AdminAuthService;
+import cl.reservakids.application.usecase.AuthEventPort;
 import cl.reservakids.application.usecase.TokenPort;
 import cl.reservakids.domain.model.Administrador;
 import cl.reservakids.domain.model.RefreshTokenAdmin;
@@ -32,6 +33,7 @@ class AdminAuthServiceTest {
     @Mock RefreshTokenAdminRepository refreshTokenRepository;
     @Mock PasswordEncoder passwordEncoder;
     @Mock TokenPort tokenPort;
+    @Mock AuthEventPort authEvent;
 
     @InjectMocks AdminAuthService service;
 

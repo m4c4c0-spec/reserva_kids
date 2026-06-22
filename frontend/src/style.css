@@ -16,9 +16,12 @@
   --color-surface-high: #fbe2eb;
   --color-surface-highest: #f5dce5;
   --color-on-surface: #25181e;
-  --color-on-surface-variant: #57404b;
-  --color-outline: #8a707b;
-  --color-outline-variant: #debecb;
+  /* V27 (accesibilidad/presbicia): gris de cuerpo más oscuro para pasar AA sobre
+     los fondos rosados (el #57404b anterior quedaba en ~4.5:1 justo y costaba en
+     móvil a la luz del día). #3a2730 llega a ~7:1 contra surface #fff8f8. */
+  --color-on-surface-variant: #3a2730;
+  --color-outline: #6b5764;
+  --color-outline-variant: #c9b0bd;
 
   --color-primary: #b5007d;
   --color-on-primary: #ffffff;
@@ -177,6 +180,25 @@ body {
     transform: translateY(-2px);
   }
 
+  /* V27 (presbicia): alto contraste adicional para acciones críticas del panel.
+     Fondo primary sólido (rosa eléctrico) + texto blanco → contraste ~5.8:1 (AAA grande).
+     Más grande y más pesado que el primario default. */
+  .btn-festivo--alto-contraste {
+    background-color: var(--color-primary);
+    color: var(--color-on-primary);
+    font-size: 1rem;
+    font-weight: 800;
+    padding: 0.875rem 1.5rem;
+    box-shadow: var(--shadow-soft);
+    border: 2px solid var(--color-primary);
+  }
+  .btn-festivo--alto-contraste:hover {
+    background-color: var(--color-primary);
+    filter: brightness(1.05);
+    box-shadow: var(--shadow-lifted);
+    transform: translateY(-2px);
+  }
+
   /* Input festivo: el patrón repetido ~15 veces en las vistas. */
   .input-festivo {
     width: 100%;
@@ -256,4 +278,26 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ============================================================
+   V27 (accesibilidad/presbicia): tipografía y espaciado más
+   legibles en el panel del dueño. Aumenta el tamaño base ~12%
+   y refuerza el peso de títulos y labels. No afecta al mini-sitio
+   público (viene con su propia escala para 90 s de reserva).
+   ============================================================ */
+.dashboard-grandes {
+  font-size: 1.0625rem;
+}
+.dashboard-grandes h2 {
+  font-size: 1.75rem;
+  letter-spacing: -0.01em;
+}
+.dashboard-grandes label {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.dashboard-grandes .input-festivo {
+  font-size: 1.0625rem;
+  padding: 0.875rem 1rem;
 }

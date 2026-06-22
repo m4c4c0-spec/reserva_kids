@@ -1,5 +1,6 @@
 package cl.reservakids.application;
 
+import cl.reservakids.application.usecase.AuditPort;
 import cl.reservakids.application.usecase.ClienteService;
 import cl.reservakids.domain.exception.RecursoNoEncontradoException;
 import cl.reservakids.domain.model.Cliente;
@@ -30,6 +31,7 @@ class ClienteServiceTest {
 
     @Mock ClienteRepository clienteRepository;
     @Mock ReservaRepository reservaRepository;
+    @Mock AuditPort audit;
     @Spy Clock clock = Clock.fixed(Instant.parse("2026-06-10T12:00:00Z"), ZoneOffset.UTC);
 
     @InjectMocks ClienteService service;
@@ -40,7 +42,7 @@ class ClienteServiceTest {
         when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.of(cliente));
         when(reservaRepository.existsByClienteIdAndEstadoIn(30L, EstadoReserva.ACTIVOS)).thenReturn(false);
 
-        service.anonimizar(1L, 30L);
+        service.anonimizar(1L, 1L, 30L);
 
         assertTrue(cliente.isAnonimizado());
         assertEquals(Cliente.NOMBRE_ANONIMO, cliente.getNombre());
@@ -57,7 +59,7 @@ class ClienteServiceTest {
         when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.of(cliente));
         when(reservaRepository.existsByClienteIdAndEstadoIn(30L, EstadoReserva.ACTIVOS)).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> service.anonimizar(1L, 30L));
+        assertThrows(IllegalArgumentException.class, () -> service.anonimizar(1L, 1L, 30L));
         assertFalse(cliente.isAnonimizado());
         assertEquals("Ana", cliente.getNombre());
         verify(reservaRepository, never()).anonimizarComentariosDeCliente(any(), any());
@@ -69,7 +71,7 @@ class ClienteServiceTest {
         cliente.anonimizar(OffsetDateTime.parse("2026-01-01T00:00:00Z"));
         when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.of(cliente));
 
-        assertDoesNotThrow(() -> service.anonimizar(1L, 30L));
+        assertDoesNotThrow(() -> service.anonimizar(1L, 1L, 30L));
         verifyNoInteractions(reservaRepository);
     }
 
@@ -77,7 +79,7 @@ class ClienteServiceTest {
     void soloClientesDelTenant() {
         // Aislamiento multi-tenant: el cliente de otro tenant no es visible
         when(clienteRepository.findByIdAndTenantId(30L, 99L)).thenReturn(Optional.empty());
-        assertThrows(RecursoNoEncontradoException.class, () -> service.anonimizar(99L, 30L));
+        assertThrows(RecursoNoEncontradoException.class, () -> service.anonimizar(99L, 1L, 30L));
     }
 
     private Cliente cliente(Long id) {

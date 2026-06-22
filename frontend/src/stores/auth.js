@@ -3,7 +3,7 @@ import axios from 'axios'
 
 // dev: '' → '/api' relativo (proxy de Vite); prod: VITE_API_URL con el dominio
 const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
-const withCreds = { withCredentials: true }
+const withCreds = { withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } }
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -33,6 +33,15 @@ export const useAuthStore = defineStore('auth', {
     async registrar(payload) {
       const { data } = await axios.post(`${baseURL}/auth/register`, payload, withCreds)
       this.guardar(data)
+    },
+    /** V27: login con magic link — el token viajó por email y arrive en el fragment de la URL. */
+    async entrarConMagicLink(token) {
+      const { data } = await axios.post(`${baseURL}/auth/magic/entrar`, { token }, withCreds)
+      this.guardar(data)
+    },
+    /** V27: pedir que envíen un magic link al correo (login sin contraseña). */
+    async pedirMagicLink(email) {
+      await axios.post(`${baseURL}/auth/magic/solicitar`, { email }, withCreds)
     },
     async refresh() {
       // Sin body y sin el interceptor del api: el refresh token va en la cookie HttpOnly
