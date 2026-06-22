@@ -13,6 +13,7 @@ const auth = useClienteAuthStore()
 
 const modo = ref('login')
 const nombre = ref('')
+const rut = ref('')
 const email = ref('')
 const telefono = ref('')
 const password = ref('')
@@ -28,6 +29,7 @@ async function enviar() {
     } else {
       await auth.registrar({
         nombre: nombre.value,
+        rut: rut.value,
         email: email.value,
         telefono: telefono.value,
         password: password.value,
@@ -87,6 +89,25 @@ async function enviar() {
                 class="input-festivo input-festivo--con-icono !py-3"
               />
             </div>
+          </div>
+
+          <div v-if="modo === 'registro'">
+            <label class="block text-sm font-bold text-on-surface mb-1" for="rut">RUT</label>
+            <div class="relative">
+              <span
+                class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none"
+                >badge</span
+              >
+              <input
+                id="rut"
+                v-model="rut"
+                required
+                maxlength="15"
+                placeholder="12.345.678-5"
+                class="input-festivo input-festivo--con-icono !py-3"
+              />
+            </div>
+            <p class="text-xs text-on-surface-variant mt-1">Verificamos tu identidad. No compartimos tus datos.</p>
           </div>
 
           <div>

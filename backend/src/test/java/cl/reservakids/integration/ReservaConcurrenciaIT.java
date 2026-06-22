@@ -98,7 +98,7 @@ class ReservaConcurrenciaIT {
         ReservaDtos.SolicitudPublicaRequest req = new ReservaDtos.SolicitudPublicaRequest(
                 servicioRepository.findAll().get(0).getId(),
                 bloqueId,
-                "Ana", "56911111111", "ana@test.cl", 10, "Temuco", "", true);
+                "Ana", "11.111.111-1", "56911111111", "ana@test.cl", 10, "Temuco", "", true);
 
         for (int i = 0; i < hilos; i++) {
             pool.submit(() -> {

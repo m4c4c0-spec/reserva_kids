@@ -2,6 +2,7 @@ package cl.reservakids.application.usecase;
 
 import cl.reservakids.application.dto.AdminDtos.*;
 import cl.reservakids.domain.model.Administrador;
+import cl.reservakids.domain.model.AuthEvent;
 import cl.reservakids.domain.model.RefreshTokenAdmin;
 import cl.reservakids.domain.repository.AdministradorRepository;
 import cl.reservakids.domain.repository.RefreshTokenAdminRepository;
@@ -38,6 +39,7 @@ public class AdminAuthService {
     private final RefreshTokenAdminRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
+    private final AuthEventPort authEvent;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.jwt.refresh-days}")
@@ -49,11 +51,20 @@ public class AdminAuthService {
 
     @Transactional
     public AdminTokenResponse login(LoginAdminRequest req) {
-        Administrador admin = administradorRepository.findByEmail(normalizarEmail(req.email()))
-                .orElseThrow(() -> new BadCredentialsException("Credenciales inválidas"));
+        String email = normalizarEmail(req.email());
+        Administrador admin = administradorRepository.findByEmail(email)
+                .orElseThrow(() -> {
+                    authEvent.registrar(AuthEvent.ACTOR_ADMIN, null, email,
+                            AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Email no registrado");
+                    return new BadCredentialsException("Credenciales inválidas");
+                });
         if (!passwordEncoder.matches(req.password(), admin.getPasswordHash())) {
+            authEvent.registrar(AuthEvent.ACTOR_ADMIN, admin.getId(), email,
+                    AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Contraseña incorrecta");
             throw new BadCredentialsException("Credenciales inválidas");
         }
+        authEvent.registrar(AuthEvent.ACTOR_ADMIN, admin.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS, null);
         return emitirTokens(admin);
     }
 
@@ -67,6 +78,10 @@ public class AdminAuthService {
                 .orElseThrow(() -> new BadCredentialsException("Refresh token inválido o expirado"));
         if (actual.isRevocado()) {
             refreshTokenRepository.revocarTodosDeAdmin(actual.getAdministradorId());
+            authEvent.registrar(AuthEvent.ACTOR_ADMIN, actual.getAdministradorId(),
+                    "id:" + actual.getAdministradorId(),
+                    AuthEvent.THEFT_DETECTED, AuthEvent.FAILURE,
+                    "Token ya rotado reusado — posible robo, sesiones revocadas");
             throw new BadCredentialsException("Refresh token inválido o expirado");
         }
         if (!actual.getExpiraEn().isAfter(OffsetDateTime.now())) {
@@ -76,6 +91,8 @@ public class AdminAuthService {
 
         Administrador admin = administradorRepository.findById(actual.getAdministradorId())
                 .orElseThrow(() -> new BadCredentialsException("Administrador no encontrado"));
+        authEvent.registrar(AuthEvent.ACTOR_ADMIN, admin.getId(), admin.getEmail(),
+                AuthEvent.REFRESH, AuthEvent.SUCCESS, null);
         return emitirTokens(admin);
     }
 
@@ -83,6 +100,8 @@ public class AdminAuthService {
     public void logout(Long adminId, String refreshTokenPlano) {
         if (adminId != null) {
             refreshTokenRepository.revocarTodosDeAdmin(adminId);
+            authEvent.registrar(AuthEvent.ACTOR_ADMIN, adminId, "id:" + adminId,
+                    AuthEvent.LOGOUT, AuthEvent.SUCCESS, null);
         }
         if (refreshTokenPlano != null && !refreshTokenPlano.isBlank()) {
             refreshTokenRepository.findByTokenHash(sha256(refreshTokenPlano))

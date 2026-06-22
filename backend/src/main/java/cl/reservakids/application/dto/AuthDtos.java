@@ -29,5 +29,10 @@ public final class AuthDtos {
             @NotBlank String token,
             @NotBlank @Size(min = 8, max = 72) String nuevaPassword) {}
 
+    /** V27: magic link de login sin contraseña. */
+    public record MagicSolicitudRequest(@NotBlank @Email String email) {}
+
+    public record MagicEntradaRequest(@NotBlank String token) {}
+
     public record TokenResponse(String accessToken, String refreshToken, String slug, String nombreNegocio) {}
 }

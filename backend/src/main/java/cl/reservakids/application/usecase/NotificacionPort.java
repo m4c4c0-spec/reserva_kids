@@ -31,4 +31,16 @@ public interface NotificacionPort {
 
     /** Reset de contraseña para cuentas de cliente (apoderados). */
     void resetPasswordCliente(CuentaCliente cuenta, String tokenPlano);
+
+    /**
+     * V27: magic link de login sin contraseña. El token viaja en claro UNA vez por este canal
+     * y el adaptador arma el link con la URL del frontend ({@code /magic#token=...}).
+     */
+    void magicLink(Usuario usuario, String tokenPlano);
+
+    /**
+     * Recordatorio 24h antes del evento: avisa al cliente de los servicios que contrató
+     * y la hora de la cita o cumpleaños.
+     */
+    void recordatorio(Tenant tenant, Reserva reserva, Cliente cliente, List<ReservaServicio> servicios);
 }

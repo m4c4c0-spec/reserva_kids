@@ -3,7 +3,7 @@ import axios from 'axios'
 
 // dev: '' → '/api' relativo (proxy de Vite); prod: VITE_API_URL con el dominio
 const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
-const withCreds = { withCredentials: true }
+const withCreds = { withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } }
 
 // Cuenta de cliente (apoderado): sesión SEPARADA de la del dueño (otras claves de
 // sessionStorage) para que ambas puedan coexistir sin pisarse. El refresh token vive

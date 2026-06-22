@@ -35,6 +35,7 @@ public class TenantService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final cl.reservakids.infrastructure.security.CredentialCipher credentialCipher;
     private final TenantExportService tenantExportService;
+    private final AuditPort audit;
     private final Clock clock;
 
     /**
@@ -43,12 +44,45 @@ public class TenantService {
      * opcional: si llega vacío/null se deja como está (no se borra al guardar solo el token).
      */
     @Transactional
-    public void actualizarTokenMp(Long tenantId, ActualizarTokenRequest req) {
+    public void actualizarTokenMp(Long tenantId, Long usuarioId, ActualizarTokenRequest req) {
         Tenant tenant = buscar(tenantId);
         tenant.setMpAccessToken(credentialCipher.encrypt(req.mpAccessToken()));
         if (req.mpWebhookSecret() != null && !req.mpWebhookSecret().isBlank()) {
             tenant.setMpWebhookSecret(credentialCipher.encrypt(req.mpWebhookSecret()));
         }
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                AuditEvent.CONFIGURACION_GUARDAR, "CONFIGURACION", null,
+                "Credenciales Mercado Pago actualizadas");
+    }
+
+    /**
+     * V25: guarda la pasarela de pago elegida y sus credenciales. Las credenciales del otro
+     * proveedor no se tocan si llegan vacías (cifrado en reposo, S1), pero sí se exige la
+     * credencial de la pasarela recién elegida. Así el dueño puede alternar entre Mercado Pago
+     * y Khipu sin borrar la configuración anterior.
+     */
+    @Transactional
+    public void guardarConfiguracion(Long tenantId, Long usuarioId, ActualizarConfigRequest req) {
+        Tenant tenant = buscar(tenantId);
+        tenant.setPasarelaPago(req.pasarelaPago());
+        if ("MERCADOPAGO".equals(req.pasarelaPago())) {
+            if (req.mpAccessToken() == null || req.mpAccessToken().isBlank()) {
+                throw new IllegalArgumentException("El Access Token de Mercado Pago es obligatorio");
+            }
+            tenant.setMpAccessToken(credentialCipher.encrypt(req.mpAccessToken()));
+            if (req.mpWebhookSecret() != null && !req.mpWebhookSecret().isBlank()) {
+                tenant.setMpWebhookSecret(credentialCipher.encrypt(req.mpWebhookSecret()));
+            }
+        } else if ("KHIPU".equals(req.pasarelaPago())) {
+            if (req.khipuApiKey() == null || req.khipuApiKey().isBlank()) {
+                throw new IllegalArgumentException("La API key de Khipu es obligatoria");
+            }
+            tenant.setKhipuApiKey(credentialCipher.encrypt(req.khipuApiKey()));
+            tenant.setKhipuReceiverId(req.khipuReceiverId());
+        }
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                AuditEvent.CONFIGURACION_GUARDAR, "CONFIGURACION", null,
+                "Pasarela de pago configurada: " + req.pasarelaPago());
     }
 
     /**
@@ -56,7 +90,7 @@ public class TenantService {
      * tras la ventana de gracia la purga es irreversible).
      */
     @Transactional
-    public ExportResponse cerrar(Long tenantId, CerrarRequest req) {
+    public ExportResponse cerrar(Long tenantId, Long usuarioId, CerrarRequest req) {
         Tenant tenant = buscar(tenantId);
         if (Tenant.ESTADO_CERRADO.equals(tenant.getEstado())) {
             throw new IllegalArgumentException("El negocio ya está cerrado");
@@ -87,6 +121,9 @@ public class TenantService {
         for (Usuario usuario : usuarioRepository.findByTenantId(tenantId)) {
             refreshTokenRepository.revocarTodosDeUsuario(usuario.getId());
         }
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                AuditEvent.NEGOCIO_CERRAR, "NEGOCIO", tenantId,
+                "Cierre del negocio: " + tenant.getNombre() + " (/" + tenant.getSlug() + ")");
         log.info("Offboarding: tenant '{}' (#{}) cerrado por su dueño; {} solicitudes abiertas canceladas",
                 tenant.getSlug(), tenantId, abiertas.size());
         // Otra bean: el proxy aplica y se une a esta transacción → refleja el estado final.
@@ -96,5 +133,28 @@ public class TenantService {
     private Tenant buscar(Long tenantId) {
         return tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Negocio no encontrado"));
+    }
+
+    /**
+     * V26: guarda el teléfono de WhatsApp del salón usando {@link Cliente#normalizarTelefono}
+     * (mismo convenio E.164 sin '+' que el link wa.me espera). Vacío/null lo limpia para
+     * ocultar el botón flotante de ayuda en el mini-sitio público.
+     */
+    @Transactional
+    public void guardarContacto(Long tenantId, Long usuarioId, ActualizarContactoRequest req) {
+        Tenant tenant = buscar(tenantId);
+        String raw = req == null ? null : req.telefonoContacto();
+        if (raw == null || raw.isBlank()) {
+            tenant.setTelefonoContacto(null);
+        } else {
+            String normalizado = Cliente.normalizarTelefono(raw);
+            if (normalizado == null || normalizado.length() < 8 || !normalizado.matches("\\d{8,15}")) {
+                throw new IllegalArgumentException("Teléfono de contacto inválido. Escribe, p. ej., +56 9 1234 5678.");
+            }
+            tenant.setTelefonoContacto(normalizado);
+        }
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                AuditEvent.CONFIGURACION_GUARDAR, "CONFIGURACION", null,
+                "Teléfono de contacto del salón actualizado");
     }
 }

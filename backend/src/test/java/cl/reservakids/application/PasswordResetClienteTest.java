@@ -1,5 +1,6 @@
 package cl.reservakids.application;
 
+import cl.reservakids.application.usecase.AuthEventPort;
 import cl.reservakids.application.usecase.ClienteAuthService;
 import cl.reservakids.application.usecase.NotificacionPort;
 import cl.reservakids.application.usecase.TokenPort;
@@ -40,6 +41,7 @@ class PasswordResetClienteTest {
     @Mock PasswordEncoder passwordEncoder;
     @Mock TokenPort tokenPort;
     @Mock NotificacionPort notificacion;
+    @Mock AuthEventPort authEvent;
 
     @InjectMocks ClienteAuthService service;
 

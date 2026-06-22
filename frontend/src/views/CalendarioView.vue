@@ -42,8 +42,10 @@ onMounted(cargar)
   <section class="space-y-5">
     <div class="flex items-center justify-between gap-2">
       <div>
-        <h2 class="font-display font-bold text-2xl md:text-3xl text-on-surface">Calendario</h2>
-        <p class="font-medium text-on-surface-variant text-sm mt-0.5">Tu disponibilidad para fiestas.</p>
+        <h2 class="font-display font-bold text-2xl md:text-3xl text-on-surface">Mi disponibilidad</h2>
+        <p class="font-medium text-on-surface-variant text-sm mt-0.5">
+          Marca los días y horas en que puedes hacer fiestas. Tus clientes solo pueden reservar dentro de estos horarios.
+        </p>
       </div>
       <input
         v-model="mes"
@@ -68,7 +70,7 @@ onMounted(cargar)
         <input v-model="nuevo.horaFin" type="time" required class="input-festivo mt-1" />
       </label>
       <BaseButton variante="primario" type="submit">
-        <span class="material-symbols-outlined text-[20px]">add</span> Agregar bloque
+        <span class="material-symbols-outlined text-[20px]">add</span> Agregar horario
       </BaseButton>
     </form>
 
@@ -76,27 +78,38 @@ onMounted(cargar)
     <LoadingSpinner v-if="cargando" />
 
     <ul v-else class="grid gap-3 sm:grid-cols-3">
-      <li v-for="b in bloques" :key="b.id" class="card-festiva !rounded-2xl flex items-center justify-between">
-        <div>
-          <p class="font-display font-bold text-sm text-on-surface">{{ b.fecha }}</p>
-          <p class="text-xs font-bold text-outline">{{ b.horaInicio.slice(0, 5) }}–{{ b.horaFin.slice(0, 5) }}</p>
+      <li v-for="b in bloques" :key="b.id" class="card-festiva !rounded-2xl space-y-1.5">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="font-display font-bold text-sm text-on-surface">{{ b.fecha }}</p>
+            <p class="text-xs font-bold text-outline">{{ b.horaInicio.slice(0, 5) }}–{{ b.horaFin.slice(0, 5) }}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <StatusBadge :estado="b.estado" />
+            <button
+              v-if="b.estado === 'DISPONIBLE'"
+              aria-label="Eliminar horario"
+              class="text-error hover:bg-error-container rounded-full w-7 h-7 flex items-center justify-center transition-colors"
+              @click="eliminandoId = b.id"
+            >
+              <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
-          <StatusBadge :estado="b.estado" />
-          <button
-            v-if="b.estado === 'DISPONIBLE'"
-            class="text-error hover:bg-error-container rounded-full w-7 h-7 flex items-center justify-center transition-colors"
-            @click="eliminandoId = b.id"
-          >
-            <span class="material-symbols-outlined text-[18px]">close</span>
-          </button>
-        </div>
+        <!-- A1: hacemos VISIBLE la garantía anti-doble-reserva que ya da la BD. -->
+        <p
+          v-if="b.estado !== 'DISPONIBLE'"
+          class="flex items-center gap-1 text-[11px] font-semibold text-green-800"
+        >
+          <span class="material-symbols-outlined text-[14px]">shield_person</span>
+          Reservado — nadie más puede tomar este horario.
+        </p>
       </li>
     </ul>
 
     <EmptyState
       v-if="!cargando && !bloques.length"
-      mensaje="Sin bloques este mes. Agrega bloques para que tus clientes puedan reservar."
+      mensaje="Aún no tienes horarios este mes. Agrega los días y horas en que puedes atender para que tus clientes reserven."
       icono="calendar_month"
     />
 

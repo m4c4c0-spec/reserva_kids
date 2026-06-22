@@ -3,6 +3,10 @@ package cl.reservakids.infrastructure.web;
 import cl.reservakids.application.dto.AuthDtos;
 import cl.reservakids.application.dto.ClienteDtos.*;
 import cl.reservakids.application.usecase.ClienteAuthService;
+import cl.reservakids.domain.model.EstadoReserva;
+import cl.reservakids.domain.repository.ClienteRepository;
+import cl.reservakids.domain.repository.CuentaClienteRepository;
+import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.infrastructure.security.AuthPrincipal;
 import cl.reservakids.infrastructure.security.RefreshCookieService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 /** Registro/login de cuentas de cliente (apoderados). Público + rate-limited. */
 @RestController
 @RequestMapping("/api/cliente-auth")
@@ -21,6 +27,50 @@ public class ClienteAuthController {
 
     private final ClienteAuthService clienteAuthService;
     private final RefreshCookieService refreshCookieService;
+    private final CuentaClienteRepository cuentaClienteRepository;
+    private final ClienteRepository clienteRepository;
+    private final ReservaRepository reservaRepository;
+
+    // ── Ley 21.719: acceso y supresión de datos personales del cliente ──
+
+    /** El cliente autenticado consulta sus datos personales almacenados. */
+    @GetMapping("/mis-datos")
+    public ResponseEntity<?> misDatos(@AuthenticationPrincipal AuthPrincipal principal) {
+        var cuenta = cuentaClienteRepository.findById(principal.usuarioId()).orElse(null);
+        if (cuenta == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(Map.of(
+                "nombre", cuenta.getNombre() != null ? cuenta.getNombre() : "",
+                "email", cuenta.getEmail(),
+                "telefono", cuenta.getTelefono() != null ? cuenta.getTelefono() : "",
+                "rut", cuenta.getRut() != null ? cuenta.getRut() : ""));
+    }
+
+    /**
+     * Ley 21.719: supresión de datos a demanda del propio cliente.
+     * Anonimiza todos sus registros de Cliente en los negocios donde reservó.
+     * Es idempotente: pedirlo 2 veces no es error.
+     */
+    @PostMapping("/suprimir-datos")
+    public ResponseEntity<Map<String, String>> suprimirDatos(@AuthenticationPrincipal AuthPrincipal principal) {
+        var cuenta = cuentaClienteRepository.findById(principal.usuarioId()).orElse(null);
+        if (cuenta == null) return ResponseEntity.notFound().build();
+        int anonimizados = 0;
+        String telefono = cuenta.getTelefono();
+        if (telefono != null && !telefono.isBlank()) {
+            var clientes = clienteRepository.findAll().stream()
+                    .filter(c -> telefono.equals(c.getTelefono()) && !c.isAnonimizado())
+                    .toList();
+            for (var c : clientes) {
+                if (!reservaRepository.existsByClienteIdAndEstadoIn(c.getId(), EstadoReserva.ACTIVOS)) {
+                    c.anonimizar(java.time.OffsetDateTime.now());
+                    anonimizados++;
+                }
+            }
+        }
+        return ResponseEntity.ok(Map.of("mensaje",
+                "Tus datos personales han sido suprimidos (" + anonimizados + " registros). " +
+                "Las reservas históricas se conservan sin datos identificativos."));
+    }
 
     @PostMapping("/register")
     public ResponseEntity<ClienteTokenResponse> register(@Valid @RequestBody RegistroClienteRequest req,

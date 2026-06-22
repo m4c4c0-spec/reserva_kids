@@ -3,9 +3,11 @@ package cl.reservakids.application;
 import cl.reservakids.application.dto.ReservaDtos.CotizarRequest;
 import cl.reservakids.application.dto.ReservaDtos.PagoRequest;
 import cl.reservakids.application.dto.ReservaDtos.SolicitudPublicaRequest;
+import cl.reservakids.application.usecase.AuditPort;
 import cl.reservakids.application.usecase.NotificacionPort;
 import cl.reservakids.application.usecase.NotificacionWhatsappPort;
 import cl.reservakids.application.usecase.ReservaService;
+import cl.reservakids.infrastructure.security.HtmlSanitizer;
 import cl.reservakids.domain.exception.ConflictoBloqueException;
 import cl.reservakids.domain.exception.RecursoNoEncontradoException;
 import cl.reservakids.domain.model.*;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.OffsetDateTime;
@@ -37,6 +40,9 @@ class ReservaServiceTest {
     @Mock PagoRepository pagoRepository;
     @Mock NotificacionPort notificacion;
     @Mock NotificacionWhatsappPort whatsapp;
+    @Mock AuditPort audit;
+    // Stateless: usamos el real (sanitize devuelve el texto) en vez de un mock que daría null.
+    @Spy HtmlSanitizer sanitizer = new HtmlSanitizer();
 
     @InjectMocks ReservaService service;
 
@@ -57,8 +63,8 @@ class ReservaServiceTest {
     }
 
     private SolicitudPublicaRequest solicitud() {
-        return new SolicitudPublicaRequest(10L, 20L, "Ana", "+56 9 1111 1111",
-                "ana@mail.cl", 15, "Victoria", "Tema dinosaurios", true);
+        return new SolicitudPublicaRequest(10L, 20L, "Ana", "11.111.111-1",
+                "+56 9 1111 1111", "ana@mail.cl", 15, "Victoria", "Tema dinosaurios", true);
     }
 
     @Test
@@ -109,11 +115,11 @@ class ReservaServiceTest {
         when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.of(cliente));
         when(reservaServicioRepository.findByReservaIdOrderById(50L)).thenReturn(List.of());
 
-        service.procesarWebhookPago(1L, 50L, "pay-1", 12000, "approved");
+        service.procesarWebhookPago(1L, 50L, "pay-1", 12000, "approved", "MERCADOPAGO");
 
         assertEquals(EstadoReserva.CONFIRMADA, cita.getEstado());
         verify(notificacion).citaConfirmada(eq(tenant), eq(cita), eq(cliente), anyList());
-        verify(whatsapp).confirmacionCita(eq(tenant), eq(cita), eq(cliente), anyList());
+        verify(whatsapp).confirmacionReserva(eq(tenant), eq(cita), eq(cliente), anyList());
     }
 
     @Test
@@ -133,7 +139,7 @@ class ReservaServiceTest {
     @Test
     void cotizarRechazaSeniaMayorAlTotal() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.cotizar(1L, 40L, new CotizarRequest(100_000, 150_000)));
+                () -> service.cotizar(1L, 9L, 40L, new CotizarRequest(100_000, 150_000)));
     }
 
     @Test
@@ -141,7 +147,7 @@ class ReservaServiceTest {
         // Aislamiento multi-tenant: la reserva de otro tenant no es visible
         when(reservaRepository.findByIdAndTenantId(40L, 99L)).thenReturn(Optional.empty());
         assertThrows(RecursoNoEncontradoException.class,
-                () -> service.cotizar(99L, 40L, new CotizarRequest(100_000, 30_000)));
+                () -> service.cotizar(99L, 9L, 40L, new CotizarRequest(100_000, 30_000)));
     }
 
     @Test
@@ -151,7 +157,7 @@ class ReservaServiceTest {
         when(pagoRepository.totalPagado(40L)).thenReturn(30_000);
         when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
-        var respuesta = service.confirmar(1L, 40L);
+        var respuesta = service.confirmar(1L, 9L, 40L);
 
         assertEquals("CONFIRMADA", respuesta.estado());
         verify(bloqueRepository).transicionarEstado(20L, 1L, EstadoBloque.EN_ESPERA, EstadoBloque.CONFIRMADO);
@@ -202,7 +208,7 @@ class ReservaServiceTest {
         when(pagoRepository.totalPagado(40L)).thenReturn(100_000);
         when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
-        var respuesta = service.realizar(1L, 40L);
+        var respuesta = service.realizar(1L, 9L, 40L);
 
         assertEquals("REALIZADA", respuesta.estado());
         verifyNoInteractions(bloqueRepository); // el bloque pasado se queda CONFIRMADO
@@ -215,7 +221,7 @@ class ReservaServiceTest {
         when(pagoRepository.totalPagado(40L)).thenReturn(0);
         when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
-        var respuesta = service.cancelar(1L, 40L, null);
+        var respuesta = service.cancelar(1L, 9L, 40L, null);
 
         assertEquals("CANCELADA", respuesta.estado());
         verify(bloqueRepository).transicionarEstado(20L, 1L, EstadoBloque.EN_ESPERA, EstadoBloque.DISPONIBLE);

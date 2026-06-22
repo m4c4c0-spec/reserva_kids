@@ -1,6 +1,7 @@
 package cl.reservakids.application.dto;
 
 import cl.reservakids.domain.model.Reserva;
+import cl.reservakids.domain.model.Rut;
 import jakarta.validation.constraints.*;
 
 public final class ReservaDtos {
@@ -12,6 +13,7 @@ public final class ReservaDtos {
             @NotNull Long servicioId,
             @NotNull Long bloqueId,
             @NotBlank @Size(max = 120) String nombreContacto,
+            @NotBlank @Rut String rut,
             @NotBlank @Size(max = 30) String telefono,
             @Email @Size(max = 160) String email,
             @Min(1) @Max(500) Integer numNinos,

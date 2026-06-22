@@ -37,6 +37,8 @@ public class ReservaService {
     private final NotificacionPort notificacion;
     private final NotificacionWhatsappPort whatsapp;
     private final PasarelaPagoPort pasarelaPagoPort;
+    private final AuditPort audit;
+    private final cl.reservakids.infrastructure.security.HtmlSanitizer sanitizer;
 
     /**
      * RF-05 + RNF-05: solicitud pública. La toma del bloque es un UPDATE atómico
@@ -61,6 +63,7 @@ public class ReservaService {
         OffsetDateTime ahora = OffsetDateTime.now();
         // Falla #9 (2 años): sin normalizar, cada formato de teléfono crea un cliente distinto
         String telefono = Cliente.normalizarTelefono(req.telefono());
+        String rutNormalizado = RutValidator.normalizar(req.rut());
         Cliente cliente = clienteRepository
                 .findByTenantIdAndTelefono(tenant.getId(), telefono)
                 .orElseGet(() -> {
@@ -68,6 +71,7 @@ public class ReservaService {
                     nuevo.setTenantId(tenant.getId());
                     nuevo.setTelefono(telefono);
                     nuevo.setNombre(req.nombreContacto());
+                    nuevo.setRut(rutNormalizado);
                     if (req.email() != null && !req.email().isBlank()) {
                         nuevo.setEmail(req.email());
                     }
@@ -75,13 +79,16 @@ public class ReservaService {
                 });
         // Cliente existente: este endpoint es público y sin auth — nunca sobrescribe
         // datos ya guardados (cualquiera que conozca el teléfono podría reescribirlos).
-        // Solo rellena vacíos; si el contacto difiere, queda anotado en la reserva.
-        // Falla 3.2 (5 años): esa anotación es dato personal en texto libre — la
-        // anonimización del cliente reemplaza los comentarios enteros por eso mismo.
+        // Solo rellena vacíos; el RUT se registra la primera vez (si no existe ya)
+        // para que el dueño tenga identidad verificada del cliente existente.
+        // Si el cliente ya tiene RUT y es distinto → posible error de dedup o suplantación.
         String contactoDistinto = null;
         if (cliente.getId() != null) {
             if (cliente.getEmail() == null && req.email() != null && !req.email().isBlank()) {
                 cliente.setEmail(req.email());
+            }
+            if (cliente.getRut() == null && rutNormalizado != null) {
+                cliente.setRut(rutNormalizado);
             }
             if (!cliente.getNombre().equalsIgnoreCase(req.nombreContacto())) {
                 contactoDistinto = req.nombreContacto();
@@ -99,8 +106,8 @@ public class ReservaService {
         reserva.setServicioId(servicio.getId());
         reserva.setBloqueId(req.bloqueId());
         reserva.setNumNinos(req.numNinos());
-        reserva.setComuna(req.comuna());
-        reserva.setComentarios(construirComentarios(contactoDistinto, req.comentarios()));
+        reserva.setComuna(sanitizer.sanitize(req.comuna()));
+        reserva.setComentarios(sanitizer.sanitize(construirComentarios(contactoDistinto, req.comentarios())));
         try {
             reserva = reservaRepository.saveAndFlush(reserva);
         } catch (DataIntegrityViolationException e) {
@@ -110,6 +117,9 @@ public class ReservaService {
         }
 
         notificacion.nuevaSolicitud(tenant, reserva, cliente);
+        audit.registrar(tenant.getId(), cliente.getId(), AuditEvent.ACTOR_CLIENTE,
+                AuditEvent.SOLICITUD_CREAR, "RESERVA", reserva.getId(),
+                "Solicitud pública: " + servicio.getNombre());
         return respuesta(reserva, cliente);
     }
 
@@ -169,7 +179,7 @@ public class ReservaService {
 
     /** RF-06: dueño envía cotización (total + seña sugerida). */
     @Transactional
-    public ReservaResponse cotizar(Long tenantId, Long id, CotizarRequest req) {
+    public ReservaResponse cotizar(Long tenantId, Long usuarioId, Long id, CotizarRequest req) {
         if (req.seniaClp() > req.totalClp()) {
             throw new IllegalArgumentException("La seña no puede superar el total");
         }
@@ -180,10 +190,10 @@ public class ReservaService {
         reserva.setCotizadaEn(OffsetDateTime.now()); // base de la expiración de cotizaciones
 
         Tenant tenant = tenantRepository.findById(tenantId).orElseThrow();
-        if (tenant.getMpAccessToken() != null && !tenant.getMpAccessToken().isBlank()) {
-            // B2: el link de pago es OPCIONAL. Una caída de MP no debe tumbar la cotización
-            // (antes la RuntimeException del adaptador hacía rollback de todo → 500). Si MP
-            // falla, la cotización se guarda igual sin link; el dueño puede cobrar la seña por
+        if (tenant.tienePasarelaConfigurada()) {
+            // B2: el link de pago es OPCIONAL. Una caída de la pasarela no debe tumbar la
+            // cotización (antes la RuntimeException del adaptador hacía rollback de todo → 500).
+            // Si falla, la cotización se guarda igual sin link; el dueño puede cobrar la seña por
             // otro medio o reintentar editando la cotización.
             try {
                 PasarelaPagoPort.PreferenciaPagoResponse pref = pasarelaPagoPort.crearPreferenciaDePago(reserva, tenant);
@@ -192,18 +202,21 @@ public class ReservaService {
                     reserva.setMpInitPoint(pref.initPoint());
                 }
             } catch (RuntimeException e) {
-                log.warn("Cotización #{}: no se pudo generar el link de pago de Mercado Pago ({}); "
+                log.warn("Cotización #{}: no se pudo generar el link de pago ({}); "
                         + "la cotización se guarda sin link", reserva.getId(), e.getMessage());
             }
         }
 
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                AuditEvent.RESERVA_COTIZAR, "RESERVA", reserva.getId(),
+                "Total: $" + req.totalClp() + " Seña: $" + req.seniaClp());
         return respuesta(reserva, null);
     }
 
     /** RF-06/07: confirma la reserva (normalmente tras registrar la seña). */
     @Transactional
-    public ReservaResponse confirmar(Long tenantId, Long id) {
-        return confirmarInterno(tenantId, id);
+    public ReservaResponse confirmar(Long tenantId, Long usuarioId, Long id) {
+        return confirmarInterno(tenantId, id, usuarioId);
     }
 
     /**
@@ -211,11 +224,15 @@ public class ReservaService {
      * {@link #procesarWebhookPago}, que ya corre en su propia transacción. Llamarlo
      * directo evita la auto-invocación que omitiría el proxy (Sonar S6809).
      */
-    private ReservaResponse confirmarInterno(Long tenantId, Long id) {
+    private ReservaResponse confirmarInterno(Long tenantId, Long id, Long actorId) {
         Reserva reserva = buscar(tenantId, id);
         reserva.transicionarA(EstadoReserva.CONFIRMADA);
         bloqueRepository.transicionarEstado(
                 reserva.getBloqueId(), tenantId, EstadoBloque.EN_ESPERA, EstadoBloque.CONFIRMADO);
+        if (actorId != null) {
+            audit.registrar(tenantId, actorId, AuditEvent.ACTOR_DUENO,
+                    AuditEvent.RESERVA_CONFIRMAR, "RESERVA", reserva.getId(), null);
+        }
         return respuesta(reserva, null);
     }
 
@@ -224,32 +241,37 @@ public class ReservaService {
      * El barrido diario de CicloReservaJobs cubre las que el dueño olvide cerrar.
      */
     @Transactional
-    public ReservaResponse realizar(Long tenantId, Long id) {
+    public ReservaResponse realizar(Long tenantId, Long usuarioId, Long id) {
         Reserva reserva = buscar(tenantId, id);
         reserva.transicionarA(EstadoReserva.REALIZADA);
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                AuditEvent.RESERVA_REALIZAR, "RESERVA", reserva.getId(), null);
         return respuesta(reserva, null);
     }
 
     @Transactional
-    public ReservaResponse cancelar(Long tenantId, Long id, CancelarRequest req) {
+    public ReservaResponse cancelar(Long tenantId, Long usuarioId, Long id, CancelarRequest req) {
         Reserva reserva = buscar(tenantId, id);
         EstadoBloque estadoBloque = reserva.getEstado() == EstadoReserva.CONFIRMADA
                 ? EstadoBloque.CONFIRMADO : EstadoBloque.EN_ESPERA;
         reserva.transicionarA(EstadoReserva.CANCELADA);
         if (req != null && req.motivo() != null && !req.motivo().isBlank()) {
             String previos = reserva.getComentarios() == null ? "" : reserva.getComentarios() + "\n";
-            reserva.setComentarios(previos + "[Cancelación] " + req.motivo());
+            reserva.setComentarios(previos + "[Cancelación] " + sanitizer.sanitize(req.motivo()));
         }
         // libera el bloque para nuevas solicitudes
         bloqueRepository.transicionarEstado(
                 reserva.getBloqueId(), tenantId, estadoBloque, EstadoBloque.DISPONIBLE);
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                AuditEvent.RESERVA_CANCELAR, "RESERVA", reserva.getId(),
+                req != null ? req.motivo() : null);
         return respuesta(reserva, null);
     }
 
     /** RF-07: registro de seña/abono (o devolución) y saldo pendiente. */
     @Transactional
     public ReservaResponse registrarPago(Long tenantId, Long usuarioId, Long id, PagoRequest req) {
-        return registrarPagoInterno(tenantId, usuarioId, id, req);
+        return registrarPagoInterno(tenantId, usuarioId, usuarioId, id, req);
     }
 
     /**
@@ -257,7 +279,7 @@ public class ReservaService {
      * {@link #procesarWebhookPago}, que ya corre en su propia transacción. Llamarlo
      * directo evita la auto-invocación que omitiría el proxy (Sonar S6809).
      */
-    private ReservaResponse registrarPagoInterno(Long tenantId, Long usuarioId, Long id, PagoRequest req) {
+    private ReservaResponse registrarPagoInterno(Long tenantId, Long actorId, Long usuarioId, Long id, PagoRequest req) {
         Reserva reserva = buscar(tenantId, id);
         boolean devolucion = Pago.TIPO_DEVOLUCION.equals(req.tipo());
         // Abonos solo en reservas activas; devoluciones también tras una cancelación
@@ -281,14 +303,20 @@ public class ReservaService {
         pago.setRegistradoPor(usuarioId); // auditoría: quién lo anotó
         pago.setReferenciaExterna(req.referenciaExterna());
         pagoRepository.save(pago);
+        if (actorId != null) {
+            audit.registrar(tenantId, actorId, AuditEvent.ACTOR_DUENO,
+                    AuditEvent.PAGO_REGISTRAR, "PAGO", pago.getId(),
+                    (devolucion ? "Devolución" : "Abono") + " $" + req.montoClp() + " " + req.medio());
+        }
         return respuesta(reserva, null);
     }
 
-    /** Procesa webhook IPN de Mercado Pago */
+    /** Procesa webhook IPN de Mercado Pago / notificación de Khipu. {@code medio} = "MERCADOPAGO"|"KHIPU". */
     @Transactional
-    public void procesarWebhookPago(Long tenantId, Long reservaId, String paymentId, Integer montoPagado, String estado) {
+    public void procesarWebhookPago(Long tenantId, Long reservaId, String paymentId, Integer montoPagado,
+                                     String estado, String medio) {
         Reserva reserva = buscar(tenantId, reservaId);
-        
+
         // Si el pago ya fue registrado antes (idempotencia)
         if (pagoRepository.existsByReferenciaExterna(paymentId)) {
             return;
@@ -297,8 +325,8 @@ public class ReservaService {
         if ("approved".equals(estado)) {
             // PagoRequest(montoClp, medio, comprobanteUrl, tipo, referenciaExterna) —
             // el orden importa: antes se registraba medio="ABONO" y tipo=null.
-            PagoRequest req = new PagoRequest(montoPagado, "MERCADOPAGO", null, Pago.TIPO_ABONO, paymentId);
-            registrarPagoInterno(tenantId, null, reservaId, req);
+            PagoRequest req = new PagoRequest(montoPagado, medio, null, Pago.TIPO_ABONO, paymentId);
+            registrarPagoInterno(tenantId, null, null, reservaId, req);
 
             // El pago aprobado confirma tanto la cotización de cumpleaños (COTIZADA) como la
             // cita por hora (PENDIENTE_PAGO → CONFIRMADA = "pago = agendado"). confirmar() hace
@@ -309,7 +337,7 @@ public class ReservaService {
             if (reserva.getEstado() == EstadoReserva.COTIZADA
                     || reserva.getEstado() == EstadoReserva.PENDIENTE_PAGO) {
                 boolean esCita = reserva.getInicio() != null; // cita por hora (no cumpleaños)
-                confirmarInterno(tenantId, reservaId);
+                confirmarInterno(tenantId, reservaId, null);
                 if (esCita) {
                     notificarCitaConfirmada(reserva);
                 }
@@ -333,7 +361,7 @@ public class ReservaService {
         }
         List<ReservaServicio> servicios = reservaServicioRepository.findByReservaIdOrderById(cita.getId());
         notificacion.citaConfirmada(tenant, cita, cliente, servicios);
-        whatsapp.confirmacionCita(tenant, cita, cliente, servicios);
+        whatsapp.confirmacionReserva(tenant, cita, cliente, servicios);
     }
 
     /** Antepone el contacto alternativo (si lo hay) a los comentarios del cliente. */

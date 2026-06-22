@@ -30,4 +30,8 @@ public class CuentaCliente {
 
     /** Contacto para confirmación/recordatorio de cita (WhatsApp + correo). E.164 chileno sin '+'. */
     private String telefono;
+
+    /** RUT chileno normalizado (sin puntos, con guión y dígito verificador). Ej: "12345678-5". */
+    @Column(length = 12)
+    private String rut;
 }

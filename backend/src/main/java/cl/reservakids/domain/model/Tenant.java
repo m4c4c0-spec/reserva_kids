@@ -56,8 +56,49 @@ public class Tenant {
     @Column(name = "mp_webhook_secret")
     private String mpWebhookSecret;
 
+    /** V25: pasarela activa del tenant ('MERCADOPAGO' default para no romper tenants ya configurados). */
+    @Column(name = "pasarela_pago", nullable = false)
+    private String pasarelaPago = "MERCADOPAGO";
+
+    /** V25: API key (x-api-key) de la cuenta de cobro de Khipu — cifrada en reposo (S1). */
+    @Column(name = "khipu_api_key")
+    private String khipuApiKey;
+
+    /** V25: Id de cobrador de Khipu — no es secreto, se usa para mostrar/verificar. */
+    @Column(name = "khipu_receiver_id")
+    private Long khipuReceiverId;
+
+    /** V26: teléfono de contacto del salón (WhatsApp), normalizado a E.164 sin '+'. Público en el mini-sitio. */
+    @Column(name = "telefono_contacto")
+    private String telefonoContacto;
+
+    // ── V23: suscripción SaaS ──
+
+    @Column(name = "plan_suscripcion", nullable = false)
+    private String planSuscripcion = "GRATIS";
+
+    @Column(name = "suscripcion_estado", nullable = false)
+    private String suscripcionEstado = "ACTIVO";
+
+    @Column(name = "suscripcion_inicio")
+    private OffsetDateTime suscripcionInicio;
+
+    @Column(name = "suscripcion_renovacion")
+    private OffsetDateTime suscripcionRenovacion;
+
+    @Column(name = "suscripcion_referencia_externa", length = 120)
+    private String suscripcionReferenciaExterna;
+
     public boolean isActivo() {
         return ESTADO_ACTIVO.equals(estado);
+    }
+
+    /** V25: ¿el dueño ya configuró la pasarela que tiene activa? Decide si cotizar genera link de pago. */
+    public boolean tienePasarelaConfigurada() {
+        if ("KHIPU".equals(pasarelaPago)) {
+            return khipuApiKey != null && !khipuApiKey.isBlank();
+        }
+        return mpAccessToken != null && !mpAccessToken.isBlank();
     }
 
     /** Cierre a demanda del dueño: la página pública desaparece y los accesos se bloquean. */
