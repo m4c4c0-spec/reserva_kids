@@ -1,10 +1,12 @@
 package cl.reservakids.application.usecase;
 
 import cl.reservakids.application.dto.ClienteDtos.*;
+import cl.reservakids.domain.model.AuthEvent;
 import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.CuentaCliente;
 import cl.reservakids.domain.model.PasswordResetToken;
 import cl.reservakids.domain.model.RefreshTokenCliente;
+import cl.reservakids.domain.model.RutValidator;
 import cl.reservakids.domain.repository.CuentaClienteRepository;
 import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenClienteRepository;
@@ -40,6 +42,7 @@ public class ClienteAuthService {
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
     private final NotificacionPort notificacion;
+    private final AuthEventPort authEvent;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.jwt.refresh-days}")
@@ -75,19 +78,31 @@ public class ClienteAuthService {
         CuentaCliente cuenta = new CuentaCliente();
         cuenta.setEmail(email);
         cuenta.setNombre(req.nombre());
+        cuenta.setRut(RutValidator.normalizar(req.rut()));
         cuenta.setTelefono(normalizarTelefono(req.telefono()));
         cuenta.setPasswordHash(passwordEncoder.encode(req.password()));
         cuenta = cuentaClienteRepository.save(cuenta);
+        authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS, "Registro de nuevo cliente");
         return emitirTokens(cuenta);
     }
 
     @Transactional
     public ClienteTokenResponse login(LoginClienteRequest req) {
-        CuentaCliente cuenta = cuentaClienteRepository.findByEmail(normalizarEmail(req.email()))
-                .orElseThrow(() -> new BadCredentialsException("Credenciales inválidas"));
+        String email = normalizarEmail(req.email());
+        CuentaCliente cuenta = cuentaClienteRepository.findByEmail(email)
+                .orElseThrow(() -> {
+                    authEvent.registrar(AuthEvent.ACTOR_CLIENTE, null, email,
+                            AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Email no registrado");
+                    return new BadCredentialsException("Credenciales inválidas");
+                });
         if (!passwordEncoder.matches(req.password(), cuenta.getPasswordHash())) {
+            authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
+                    AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Contraseña incorrecta");
             throw new BadCredentialsException("Credenciales inválidas");
         }
+        authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS, null);
         return emitirTokens(cuenta);
     }
 
@@ -101,6 +116,10 @@ public class ClienteAuthService {
                 .orElseThrow(() -> new BadCredentialsException("Refresh token inválido o expirado"));
         if (actual.isRevocado()) {
             refreshTokenRepository.revocarTodosDeCuenta(actual.getCuentaClienteId());
+            authEvent.registrar(AuthEvent.ACTOR_CLIENTE, actual.getCuentaClienteId(),
+                    "id:" + actual.getCuentaClienteId(),
+                    AuthEvent.THEFT_DETECTED, AuthEvent.FAILURE,
+                    "Token ya rotado reusado — posible robo, sesiones revocadas");
             throw new BadCredentialsException("Refresh token inválido o expirado");
         }
         if (!actual.getExpiraEn().isAfter(OffsetDateTime.now())) {
@@ -110,6 +129,8 @@ public class ClienteAuthService {
 
         CuentaCliente cuenta = cuentaClienteRepository.findById(actual.getCuentaClienteId())
                 .orElseThrow(() -> new BadCredentialsException("Cuenta no encontrada"));
+        authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), cuenta.getEmail(),
+                AuthEvent.REFRESH, AuthEvent.SUCCESS, null);
         return emitirTokens(cuenta);
     }
 
@@ -117,6 +138,8 @@ public class ClienteAuthService {
     public void logout(Long cuentaId, String refreshTokenPlano) {
         if (cuentaId != null) {
             refreshTokenRepository.revocarTodosDeCuenta(cuentaId);
+            authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuentaId, "id:" + cuentaId,
+                    AuthEvent.LOGOUT, AuthEvent.SUCCESS, null);
         }
         if (refreshTokenPlano != null && !refreshTokenPlano.isBlank()) {
             refreshTokenRepository.findByTokenHash(sha256(refreshTokenPlano))
@@ -130,7 +153,9 @@ public class ClienteAuthService {
      */
     @Transactional
     public void solicitarResetPassword(String email) {
-        cuentaClienteRepository.findByEmail(normalizarEmail(email)).ifPresent(cuenta -> {
+        String emailNorm = normalizarEmail(email);
+        if (emailNorm == null) return;
+        cuentaClienteRepository.findByEmail(emailNorm).ifPresent(cuenta -> {
             passwordResetTokenRepository.invalidarVigentesDeCuentaCliente(cuenta.getId());
 
             byte[] bytes = new byte[48];
@@ -146,6 +171,8 @@ public class ClienteAuthService {
 
             notificacion.resetPasswordCliente(cuenta, tokenPlano);
         });
+        authEvent.registrar(AuthEvent.ACTOR_CLIENTE, null, emailNorm,
+                AuthEvent.RESET_REQUEST, AuthEvent.SUCCESS, null);
     }
 
     /**
@@ -163,6 +190,8 @@ public class ClienteAuthService {
         CuentaCliente cuenta = cuentaClienteRepository.findById(token.getCuentaClienteId()).orElseThrow();
         cuenta.setPasswordHash(passwordEncoder.encode(nuevaPassword));
         refreshTokenRepository.revocarTodosDeCuenta(cuenta.getId());
+        authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), cuenta.getEmail(),
+                AuthEvent.RESET_COMPLETE, AuthEvent.SUCCESS, "Contraseña cambiada, sesiones revocadas");
     }
 
     private ClienteTokenResponse emitirTokens(CuentaCliente cuenta) {

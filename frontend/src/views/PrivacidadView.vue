@@ -22,8 +22,9 @@ const contacto = 'hola@reservakids.cl'
         <div>
           <h2 class="font-display text-xl font-semibold text-on-surface mb-2">2. Datos que recolectamos</h2>
           <ul class="list-disc pl-5 space-y-1">
-            <li>Datos de identidad: nombre, teléfono y correo electrónico del apoderado.</li>
-            <li>Datos del menor: nombre y fecha de nacimiento, solo cuando el servicio lo requiere.</li>
+            <li>Datos de identidad: nombre, RUT, teléfono y correo electrónico del apoderado.</li>
+            <li>Datos de la reserva: número de niños asistentes (solo cantidad, sin nombres ni edades), comuna y comentarios.</li>
+            <li>No recolectamos datos identificativos de menores: por política de privacidad, no almacenamos nombres ni fechas de nacimiento de niños.</li>
             <li>Datos de uso: navegación, preferencias de servicio e historial de reservas.</li>
             <li>Datos de pago: procesados por Mercado Pago; no almacenamos tarjetas ni tokens bancarios.</li>
           </ul>

@@ -21,6 +21,26 @@ const slug = ref('')
 const error = ref('')
 const cargando = ref(false)
 
+// V27: magic link — login sin contraseña (para adultos mayores que olvidan/resetean claves)
+const magicEnviado = ref(false)
+
+async function pedirMagicLink() {
+  error.value = ''
+  if (!email.value) {
+    error.value = 'Escribe tu correo para enviarte el enlace.'
+    return
+  }
+  cargando.value = true
+  try {
+    await auth.pedirMagicLink(email.value)
+    magicEnviado.value = true
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Error de conexión, intenta de nuevo'
+  } finally {
+    cargando.value = false
+  }
+}
+
 const reaccion = ref('')
 const mirar = () => {
   reaccion.value = 'mirar'
@@ -191,6 +211,31 @@ async function enviar() {
         </form>
 
         <div class="mt-6 flex flex-col items-center gap-3">
+          <!-- V27: magic link — sin contraseña, ideal para adultos mayores -->
+          <div v-if="modo === 'login' && !magicEnviado" class="w-full space-y-2">
+            <BaseButton variante="secundario" type="button" class="w-full py-3" @click="pedirMagicLink">
+              <span class="material-symbols-outlined" style="font-size: 20px">mail</span>
+              Enviarme un enlace al correo
+            </BaseButton>
+            <p class="text-xs font-medium text-on-surface-variant text-center px-2">
+              ¿No recuerdas tu contraseña? Te mandamos un enlace a tu correo; lo tocas y entras directo al panel.
+            </p>
+          </div>
+          <div v-if="modo === 'login' && magicEnviado" class="w-full space-y-2">
+            <p
+              class="text-sm font-semibold text-on-secondary-container bg-secondary-fixed rounded-xl px-3 py-2 text-center"
+            >
+              Si el correo está registrado, te enviamos un enlace. Revisa tu bandeja (vence en 10 minutos).
+            </p>
+            <button
+              class="text-sm font-bold text-secondary hover:underline"
+              type="button"
+              @click="magicEnviado = false"
+            >
+              Volver al inicio de sesión
+            </button>
+          </div>
+
           <RouterLink
             v-if="modo === 'login'"
             to="/reset"

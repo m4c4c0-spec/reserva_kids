@@ -2,6 +2,7 @@ package cl.reservakids.application;
 
 import cl.reservakids.application.dto.TenantDtos.CerrarRequest;
 import cl.reservakids.application.dto.TenantDtos.ExportResponse;
+import cl.reservakids.application.usecase.AuditPort;
 import cl.reservakids.application.usecase.TenantExportService;
 import cl.reservakids.application.usecase.TenantService;
 import cl.reservakids.domain.model.*;
@@ -35,6 +36,7 @@ class TenantServiceTest {
     @Mock UsuarioRepository usuarioRepository;
     @Mock RefreshTokenRepository refreshTokenRepository;
     @Mock TenantExportService tenantExportService;
+    @Mock AuditPort audit;
     @Spy Clock clock = Clock.fixed(Instant.parse("2026-06-11T12:00:00Z"), ZoneOffset.UTC);
 
     @InjectMocks TenantService service;
@@ -56,7 +58,7 @@ class TenantServiceTest {
         // El export final lo produce TenantExportService (otra bean, misma transacción).
         when(tenantExportService.exportar(1L)).thenReturn(exportConEstado(Tenant.ESTADO_CERRADO));
 
-        ExportResponse export = service.cerrar(1L, new CerrarRequest("fiestas-pepito"));
+        ExportResponse export = service.cerrar(1L, 9L, new CerrarRequest("fiestas-pepito"));
 
         assertEquals(Tenant.ESTADO_CERRADO, tenant.getEstado());
         assertNotNull(tenant.getCerradoEn());
@@ -75,7 +77,7 @@ class TenantServiceTest {
         when(reservaRepository.existsByTenantIdAndEstado(1L, EstadoReserva.CONFIRMADA)).thenReturn(true);
 
         assertThrows(IllegalArgumentException.class,
-                () -> service.cerrar(1L, new CerrarRequest("fiestas-pepito")));
+                () -> service.cerrar(1L, 9L, new CerrarRequest("fiestas-pepito")));
         assertEquals(Tenant.ESTADO_ACTIVO, tenant.getEstado());
         verify(refreshTokenRepository, never()).revocarTodosDeUsuario(anyLong());
     }
@@ -87,7 +89,7 @@ class TenantServiceTest {
         when(tenantRepository.findById(1L)).thenReturn(Optional.of(tenant));
 
         assertThrows(IllegalArgumentException.class,
-                () -> service.cerrar(1L, new CerrarRequest("otro-slug")));
+                () -> service.cerrar(1L, 9L, new CerrarRequest("otro-slug")));
         assertEquals(Tenant.ESTADO_ACTIVO, tenant.getEstado());
     }
 
@@ -98,7 +100,7 @@ class TenantServiceTest {
         when(tenantRepository.findById(1L)).thenReturn(Optional.of(tenant));
 
         assertThrows(IllegalArgumentException.class,
-                () -> service.cerrar(1L, new CerrarRequest("fiestas-pepito")));
+                () -> service.cerrar(1L, 9L, new CerrarRequest("fiestas-pepito")));
     }
 
     private Tenant tenant(String slug) {

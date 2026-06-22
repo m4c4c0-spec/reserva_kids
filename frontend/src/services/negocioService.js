@@ -27,6 +27,12 @@ export async function listarNegocios() {
   return data
 }
 
+// A4: directorio público, sin login (axios directo, sin cliente autenticado).
+export async function listarNegociosPublico() {
+  const { data } = await axios.get(`${BASE_URL}/public/negocios`)
+  return data
+}
+
 export async function agendar(slug, datos) {
   const { data } = await api.post(`/cliente/agendar/${slug}`, datos)
   return data

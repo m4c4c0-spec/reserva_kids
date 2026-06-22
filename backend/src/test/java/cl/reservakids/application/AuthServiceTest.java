@@ -1,6 +1,7 @@
 package cl.reservakids.application;
 
 import cl.reservakids.application.dto.AuthDtos.RefreshRequest;
+import cl.reservakids.application.usecase.AuthEventPort;
 import cl.reservakids.application.usecase.AuthService;
 import cl.reservakids.application.usecase.HorarioAtencionService;
 import cl.reservakids.application.usecase.TokenPort;
@@ -37,6 +38,7 @@ class AuthServiceTest {
     @Mock HorarioAtencionService horarioAtencionService;
     @Mock PasswordEncoder passwordEncoder;
     @Mock TokenPort tokenPort;
+    @Mock AuthEventPort authEvent;
 
     @InjectMocks AuthService service;
 

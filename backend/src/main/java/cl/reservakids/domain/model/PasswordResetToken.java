@@ -23,6 +23,10 @@ import java.util.UUID;
 @NoArgsConstructor
 public class PasswordResetToken {
 
+    /** V27: discriminador de tipo de token (reset de contraseña vs magic link de login). */
+    public static final String TIPO_PASSWORD = "PASSWORD";
+    public static final String TIPO_MAGIC = "MAGIC";
+
     @Id
     private UUID id;
 
@@ -43,6 +47,10 @@ public class PasswordResetToken {
 
     @Column(name = "creado_en", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime creadoEn;
+
+    /** V27: 'PASSWORD' (reset) o 'MAGIC' (login sin contraseña). Default 'PASSWORD'. */
+    @Column(nullable = false)
+    private String tipo = TIPO_PASSWORD;
 
     public boolean vigente(OffsetDateTime ahora) {
         return !usado && expiraEn.isAfter(ahora);

@@ -18,9 +18,13 @@ import java.util.List;
 /**
  * Agendamiento de citas por hora (cliente autenticado). Valida los servicios y la hora contra
  * la disponibilidad real (el precio y la duración se recalculan en el backend, nunca se confían
- * al cliente), crea la cita en estado PENDIENTE_PAGO reservando la franja y genera la preferencia
- * de pago. La cita solo se confirma cuando el webhook de Mercado Pago aprueba el pago
- * ({@link ReservaService#procesarWebhookPago}): "pago = agendado".
+ * al cliente), crea la cita en estado PENDIENTE_PAGO reservando la franja.
+ * <p>
+ * Si el negocio tiene pasarela configurada, genera la preferencia de pago y la cita se confirma
+ * cuando el webhook aprueba el pago ({@link ReservaService#procesarWebhookPago}).
+ * Si no tiene pasarela, la cita se guarda sin link de pago: el job
+ * {@link CicloReservaJobs#expirarCitasSinPago()} la cancelará automáticamente tras el timeout
+ * configurado.
  */
 @Slf4j
 @Service
@@ -35,6 +39,7 @@ public class AgendaService {
     private final ReservaServicioRepository reservaServicioRepository;
     private final DisponibilidadService disponibilidadService;
     private final PasarelaPagoPort pasarelaPagoPort;
+    private final AuditPort audit;
     private final Clock clock;
 
     @Transactional
@@ -111,17 +116,32 @@ public class AgendaService {
             reservaServicioRepository.save(new ReservaServicio(reserva.getId(), s));
         }
 
-        // Pago obligatorio: sin pasarela no hay forma de confirmar la cita. Si MP falla, la
-        // excepción revierte toda la transacción (no quedan citas huérfanas PENDIENTE_PAGO).
-        PasarelaPagoPort.PreferenciaPagoResponse pref = pasarelaPagoPort.crearPreferenciaDePago(reserva, tenant);
-        if (pref == null) {
-            throw new IllegalArgumentException("Este negocio aún no tiene pagos en línea habilitados");
+        String initPoint = null;
+        if (tenant.tienePasarelaConfigurada()) {
+            try {
+                PasarelaPagoPort.PreferenciaPagoResponse pref =
+                        pasarelaPagoPort.crearPreferenciaDePago(reserva, tenant);
+                if (pref != null) {
+                    reserva.setMpPreferenceId(pref.preferenceId());
+                    reserva.setMpInitPoint(pref.initPoint());
+                    initPoint = pref.initPoint();
+                }
+            } catch (RuntimeException e) {
+                log.warn("Cita #{}: no se pudo generar el link de pago ({}); "
+                        + "la cita queda PENDIENTE_PAGO sin link", reserva.getId(), e.getMessage());
+            }
         }
-        reserva.setMpPreferenceId(pref.preferenceId());
-        reserva.setMpInitPoint(pref.initPoint());
+
+        if (initPoint == null && !tenant.tienePasarelaConfigurada()) {
+            log.info("Cita #{} creada SIN link de pago — el negocio {} no tiene pasarela configurada",
+                    reserva.getId(), slug);
+        }
 
         log.info("Cita #{} creada (PENDIENTE_PAGO) para tenant {} el {} — total {}",
                 reserva.getId(), slug, inicio, total);
-        return new AgendarCitaResponse(reserva.getId(), pref.initPoint(), total, inicio.toString());
+        audit.registrar(tenant.getId(), cuentaClienteId, AuditEvent.ACTOR_CLIENTE,
+                AuditEvent.CITA_AGENDAR, "RESERVA", reserva.getId(),
+                "Cita: " + servicios.stream().map(Servicio::getNombre).toList() + " $" + total);
+        return new AgendarCitaResponse(reserva.getId(), initPoint, total, inicio.toString());
     }
 }
