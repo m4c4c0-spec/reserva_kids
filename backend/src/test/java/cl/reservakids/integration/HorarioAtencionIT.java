@@ -70,7 +70,7 @@ class HorarioAtencionIT {
         martes = lunes.plusDays(1);
 
         // Solo lunes 10:00–12:00, intervalo 30 min.
-        horarioAtencionService.guardar(tenantId, new HorarioRequest(30,
+        horarioAtencionService.guardar(tenantId, 1L, new HorarioRequest(30,
                 List.of(new FranjaRequest(1, LocalTime.of(10, 0), LocalTime.of(12, 0)))));
     }
 

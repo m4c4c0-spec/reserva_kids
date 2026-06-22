@@ -13,6 +13,7 @@ const router = createRouter({
       meta: { soloInvitados: 'dueno' },
     },
     { path: '/reset', component: () => import('../views/ResetPasswordView.vue') },
+    { path: '/magic', component: () => import('../views/MagicLinkView.vue') },
     {
       path: '/panel',
       component: () => import('../views/DashboardLayout.vue'),
@@ -31,6 +32,9 @@ const router = createRouter({
       meta: { soloInvitados: 'cliente' },
     },
     { path: '/privacidad', component: () => import('../views/PrivacidadView.vue') },
+    // A4: directorio público (sin login). Debe ir ANTES del catch-all /:slug para
+    // que /negocios no se interprete como el slug de un negocio.
+    { path: '/negocios', component: () => import('../views/DirectorioPublicoView.vue') },
     { path: '/clientes', component: () => import('../views/ClienteHomeView.vue'), meta: { requiereCliente: true } },
     {
       path: '/clientes/negocios',
@@ -83,6 +87,13 @@ router.beforeEach((to) => {
   const auth = useAuthStore()
   const clienteAuth = useClienteAuthStore()
   const adminAuth = useAdminAuthStore()
+
+  // Segregación cross-role (defensa en profundidad): un rol no puede navegar
+  // rutas de otro rol aunque tenga sesión activa. El backend ya lo rechaza,
+  // pero aquí evitamos que el usuario vea pantallas de carga y errores 403.
+  if (auth.autenticado && (to.meta.requiereCliente || to.meta.requiereAdmin)) return '/panel'
+  if (clienteAuth.autenticado && (to.meta.requiereAuth || to.meta.requiereAdmin)) return '/clientes'
+  if (adminAuth.autenticado && (to.meta.requiereAuth || to.meta.requiereCliente)) return '/admin/metricas'
 
   // Rutas protegidas: requieren sesión activa.
   if (to.meta.requiereAuth && !auth.autenticado) return '/login'

@@ -1,9 +1,11 @@
 package cl.reservakids.infrastructure.security;
 
+import cl.reservakids.domain.repository.RateLimitBucketRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -11,10 +13,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
+@Slf4j
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
@@ -39,11 +39,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Value("${app.security.trust-proxy}")
     private boolean trustProxy;
 
-    private record Ventana(long epochMinuto, AtomicInteger contador, int maxPermitido) {}
+    private final RateLimitBucketRepository bucketRepository;
 
-    private final Map<String, Ventana> ventanas = new ConcurrentHashMap<>();
+    private volatile long ultimaLimpieza = 0;
 
-    private long ultimaLimpieza = 0;
+    public RateLimitFilter(RateLimitBucketRepository bucketRepository) {
+        this.bucketRepository = bucketRepository;
+    }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -59,6 +61,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
         String ip = ipCliente(request);
         int maxPorMinuto = resolverLimite(request);
+        String rutaTipo = resolverTipoRuta(request);
         if (maxPorMinuto <= 0) {
             chain.doFilter(request, response);
             return;
@@ -66,14 +69,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         long minutoActual = Instant.now().getEpochSecond() / 60;
 
-        Ventana ventana = ventanas.compute(ip, (k, v) -> {
-            if (v == null || v.epochMinuto() != minutoActual || v.maxPermitido() != maxPorMinuto) {
-                return new Ventana(minutoActual, new AtomicInteger(), maxPorMinuto);
-            }
-            return v;
-        });
+        int contador;
+        try {
+            // H2: conteo ATÓMICO en la BD (compartido entre instancias), no en memoria local.
+            contador = bucketRepository.incrementarYContar(ip, rutaTipo, minutoActual, maxPorMinuto);
+        } catch (Exception e) {
+            // Fail-open: un fallo de BD no debe tumbar la API. Se loguea y se permite la request;
+            // preferimos disponibilidad a bloquear todo el tráfico por el rate limiter.
+            log.warn("Rate limit no disponible (BD), permitiendo la request (fail-open): {}", e.getMessage());
+            chain.doFilter(request, response);
+            return;
+        }
 
-        int contador = ventana.contador().incrementAndGet();
         if (contador > maxPorMinuto) {
             int segundosRestantes = 60 - (int) (Instant.now().getEpochSecond() % 60);
             response.setStatus(429);
@@ -86,6 +93,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         limpiarPeriodicamente(minutoActual);
         chain.doFilter(request, response);
+    }
+
+    private String resolverTipoRuta(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        if (uri.startsWith("/api/public/webhooks/")) return "webhook";
+        if (uri.startsWith("/api/admin-auth/")) return "admin-auth";
+        if (uri.startsWith("/api/auth/")) return "auth";
+        if (uri.startsWith("/api/cliente-auth/")) return "cliente-auth";
+        if (uri.startsWith("/api/public/")) return "public";
+        return "panel";
     }
 
     private int resolverLimite(HttpServletRequest request) {
@@ -114,10 +131,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
         ultimaLimpieza = ahora;
-        ventanas.entrySet().removeIf(e -> {
-            long edad = minutoActual - e.getValue().epochMinuto();
-            return edad > 2;
-        });
+        try {
+            // Borra buckets de ventanas pasadas (>2 min) para que la tabla no acumule IPs inactivas.
+            bucketRepository.purgarExpirados(minutoActual - 2);
+        } catch (Exception e) {
+            log.debug("No se pudo purgar rate limit buckets: {}", e.getMessage());
+        }
     }
 
     private String ipCliente(HttpServletRequest request) {

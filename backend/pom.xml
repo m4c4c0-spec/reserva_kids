@@ -114,6 +114,12 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- RNF-07: sanitización HTML server-side como defensa en profundidad contra XSS almacenado -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.19.1</version>
+        </dependency>
     </dependencies>
 
     <build>

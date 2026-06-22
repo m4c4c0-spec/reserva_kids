@@ -167,7 +167,7 @@ public class WebhookController {
             return ResponseEntity.ok(IGNORADO);
         }
         reservaService.procesarWebhookPago(tenantId, reservaId, dataId,
-                payment.getTransactionAmount().intValue(), payment.getStatus());
+                payment.getTransactionAmount().intValue(), payment.getStatus(), "MERCADOPAGO");
         return ResponseEntity.ok("ok");
     }
 

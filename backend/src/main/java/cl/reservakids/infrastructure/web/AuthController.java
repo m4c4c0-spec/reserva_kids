@@ -89,6 +89,24 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * V27: pide un magic link de login sin contraseña por email. 204 SIEMPRE — anti-enumeración:
+     * no revela si el email está registrado (igual que /reset/solicitar). Rate limit cubre /api/auth/**.
+     */
+    @PostMapping("/magic/solicitar")
+    public ResponseEntity<Void> solicitarMagic(@Valid @RequestBody MagicSolicitudRequest req) {
+        authService.solicitarMagicLink(req.email());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** V27: canjea el magic link — valida el token, emite access+refresh y setea la cookie. */
+    @PostMapping("/magic/entrar")
+    public TokenResponse entrarMagic(@Valid @RequestBody MagicEntradaRequest req, HttpServletResponse res) {
+        TokenResponse tokens = authService.entrarConMagicLink(req.token());
+        refreshCookieService.setear(res, RefreshCookieService.COOKIE_DUENO, tokens.refreshToken());
+        return sinRefresh(tokens);
+    }
+
     /** Refresh token: prioriza la cookie HttpOnly; cae al body para clientes no-navegador. */
     private static String resolverRefresh(String cookieRefresh, RefreshRequest req) {
         if (cookieRefresh != null && !cookieRefresh.isBlank()) {

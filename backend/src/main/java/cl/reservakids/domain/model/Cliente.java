@@ -54,6 +54,9 @@ public class Cliente {
     @Column(nullable = false)
     private String telefono;
 
+    @Column(length = 12)
+    private String rut;
+
     private String email;
 
     /** Prueba de consentimiento (Ley 21.719): cuándo aceptó el tratamiento de sus datos. */
@@ -79,6 +82,7 @@ public class Cliente {
     public void anonimizar(OffsetDateTime cuando) {
         this.nombre = NOMBRE_ANONIMO;
         this.telefono = "anon-" + id;
+        this.rut = null;
         this.email = null;
         this.consentimientoEn = null;
         this.anonimizadoEn = cuando;
