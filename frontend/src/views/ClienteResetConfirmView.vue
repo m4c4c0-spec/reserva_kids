@@ -11,7 +11,12 @@ import ErrorBanner from '../components/ErrorBanner.vue'
 const route = useRoute()
 const router = useRouter()
 
-const token = computed(() => route.query.token || '')
+// RNF-07: el token viaja en fragment (#token=...) para no quedar en logs del proxy
+const token = computed(() => {
+  const hash = window.location.hash.substring(1)
+  const params = new URLSearchParams(hash)
+  return params.get('token') || ''
+})
 const password = ref('')
 const error = ref('')
 const cargando = ref(false)

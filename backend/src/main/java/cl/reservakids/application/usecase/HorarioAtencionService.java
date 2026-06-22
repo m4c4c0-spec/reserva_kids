@@ -1,6 +1,7 @@
 package cl.reservakids.application.usecase;
 
 import cl.reservakids.application.dto.HorarioAtencionDtos.*;
+import cl.reservakids.domain.model.AuditEvent;
 import cl.reservakids.domain.model.HorarioAtencion;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.HorarioAtencionRepository;
@@ -24,6 +25,7 @@ public class HorarioAtencionService {
 
     private final TenantRepository tenantRepository;
     private final HorarioAtencionRepository horarioRepository;
+    private final AuditPort audit;
 
     @Transactional(readOnly = true)
     public HorarioResponse obtener(Long tenantId) {
@@ -35,7 +37,7 @@ public class HorarioAtencionService {
     }
 
     @Transactional
-    public void guardar(Long tenantId, HorarioRequest req) {
+    public void guardar(Long tenantId, Long usuarioId, HorarioRequest req) {
         if (req.intervaloMin() < 5 || req.intervaloMin() > 120) {
             throw new IllegalArgumentException("El intervalo debe estar entre 5 y 120 minutos");
         }
@@ -58,6 +60,9 @@ public class HorarioAtencionService {
             nuevos.add(h);
         }
         horarioRepository.saveAll(nuevos);
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                AuditEvent.CONFIGURACION_GUARDAR, "CONFIGURACION", null,
+                "Horario actualizado: " + req.franjas().size() + " franjas");
     }
 
     /**

@@ -89,7 +89,7 @@ class AgendaConcurrenciaIT {
         // Horario solo para el día de la cita (10:00–18:00, intervalo 30).
         LocalDate fecha = LocalDate.now(clock).plusDays(8);
         int diaSemana = fecha.getDayOfWeek().getValue();
-        horarioAtencionService.guardar(tenant.getId(), new HorarioRequest(30,
+        horarioAtencionService.guardar(tenant.getId(), 1L, new HorarioRequest(30,
                 List.of(new FranjaRequest(diaSemana, LocalTime.of(10, 0), LocalTime.of(18, 0)))));
 
         Servicio servicio = new Servicio();

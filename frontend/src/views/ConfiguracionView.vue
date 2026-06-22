@@ -7,8 +7,11 @@ import BaseToast from '../components/BaseToast.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
 import LoadingSpinner from '../components/LoadingSpinner.vue'
 
+const pasarela = ref('MERCADOPAGO')
 const token = ref('')
 const webhookSecret = ref('')
+const khipuApiKey = ref('')
+const khipuReceiverId = ref(null)
 const toastMp = ref('')
 const errorMp = ref('')
 
@@ -26,6 +29,11 @@ const cargandoHorario = ref(true)
 const toastHorario = ref('')
 const errorHorario = ref('')
 
+// V26: teléfono de WhatsApp del salón (botón flotante de ayuda en el mini-sitio público)
+const telefonoContacto = ref('')
+const toastContacto = ref('')
+const errorContacto = ref('')
+
 onMounted(async () => {
   try {
     const data = await configuracionService.cargarHorario()
@@ -40,13 +48,16 @@ onMounted(async () => {
 async function guardarToken() {
   errorMp.value = ''
   try {
-    await configuracionService.guardarConfig({
-      mpAccessToken: token.value,
-      mpWebhookSecret: webhookSecret.value || null,
+    await configuracionService.guardarPasarela({
+      pasarelaPago: pasarela.value,
+      mpAccessToken: pasarela.value === 'MERCADOPAGO' ? token.value : null,
+      mpWebhookSecret: pasarela.value === 'MERCADOPAGO' ? webhookSecret.value || null : null,
+      khipuApiKey: pasarela.value === 'KHIPU' ? khipuApiKey.value : null,
+      khipuReceiverId: pasarela.value === 'KHIPU' ? khipuReceiverId.value || null : null,
     })
-    toastMp.value = 'Token guardado correctamente'
+    toastMp.value = 'Configuración guardada correctamente'
   } catch (e) {
-    errorMp.value = e.response?.data?.message || 'Error al guardar el token'
+    errorMp.value = e.response?.data?.message || 'Error al guardar la configuración'
   }
 }
 
@@ -67,6 +78,16 @@ async function guardarHorario() {
     errorHorario.value = e.response?.data?.message || 'Error al guardar el horario'
   }
 }
+
+async function guardarContactoBtn() {
+  errorContacto.value = ''
+  try {
+    await configuracionService.guardarContacto(telefonoContacto.value || null)
+    toastContacto.value = 'Teléfono guardado correctamente'
+  } catch (e) {
+    errorContacto.value = e.response?.data?.message || 'Error al guardar el teléfono'
+  }
+}
 </script>
 
 <template>
@@ -76,43 +97,106 @@ async function guardarHorario() {
       <p class="font-medium text-on-surface-variant text-sm mt-0.5">Ajusta los parámetros técnicos de tu negocio.</p>
     </div>
 
-    <!-- Mercado Pago -->
+    <!-- Pasarela de pago (Mercado Pago / Khipu) -->
     <div class="card-festiva !p-6 max-w-2xl">
-      <h3 class="font-display font-bold text-on-surface mb-2">Integración con Mercado Pago</h3>
+      <h3 class="font-display font-bold text-on-surface mb-2">Pago en línea de las señas</h3>
       <p class="font-medium text-on-surface-variant text-sm mb-4">
-        Para que tus clientes puedan pagar las señas de las reservas online, necesitamos conectarnos con tu cuenta de
-        Mercado Pago.
-        <br />
-        Ingresa a <strong>Tus Integraciones > Credenciales de Producción</strong> en Mercado Pago y copia tu
-        <em>Access Token</em>.
+        Para que tus clientes paguen la seña online. Mercado Pago acepta tarjetas pero cobra comisión porcentual alta;
+        Khipu cobra por transferencia bancaria directa (CuentaRUT incluida), con comisión más baja en regiones.
       </p>
 
       <form class="space-y-4" @submit.prevent="guardarToken">
         <div>
-          <label class="block text-sm font-bold text-on-surface mb-1">Access Token (Producción)</label>
-          <BaseInput v-model="token" tipo="password" requerido placeholder="APP_USR-..." icono="key" />
+          <label class="block text-sm font-bold text-on-surface mb-1">Pasarela</label>
+          <select v-model="pasarela" class="input-festivo">
+            <option value="MERCADOPAGO">Mercado Pago (tarjetas)</option>
+            <option value="KHIPU">Khipu (transferencias)</option>
+          </select>
         </div>
 
-        <div>
-          <label class="block text-sm font-bold text-on-surface mb-1">
-            Secreto de firma del webhook <span class="font-medium text-on-surface-variant">(opcional)</span>
-          </label>
-          <p class="text-xs font-medium text-on-surface-variant mb-1">
-            En Mercado Pago: <strong>Tus Integraciones > Webhooks > Firma secreta</strong>. Si lo configuras, validamos
-            que las notificaciones de pago vengan realmente de MP.
+        <div v-if="pasarela === 'MERCADOPAGO'" class="space-y-4">
+          <div>
+            <label class="block text-sm font-bold text-on-surface mb-1">Access Token (Producción)</label>
+            <BaseInput v-model="token" tipo="password" requerido placeholder="APP_USR-..." icono="key" />
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-on-surface mb-1">
+              Secreto de firma del webhook <span class="font-medium text-on-surface-variant">(opcional)</span>
+            </label>
+            <p class="text-xs font-medium text-on-surface-variant mb-1">
+              En Mercado Pago: <strong>Tus Integraciones > Webhooks > Firma secreta</strong>. Si lo configuras,
+              validamos que las notificaciones de pago vengan realmente de MP.
+            </p>
+            <BaseInput
+              v-model="webhookSecret"
+              tipo="password"
+              placeholder="Déjalo vacío para no cambiarlo"
+              icono="verified_user"
+            />
+          </div>
+        </div>
+
+        <div v-else class="space-y-4">
+          <div>
+            <label class="block text-sm font-bold text-on-surface mb-1">API key de Khipu</label>
+            <p class="text-xs font-medium text-on-surface-variant mb-1">
+              En tu cuenta de cobro de Khipu:
+              <strong>Opciones de la cuenta > Para integrar Khipu a tu sitio web</strong>. La misma clave se usa para
+              crear el cobro y para validar la notificación de pago.
+            </p>
+            <BaseInput
+              v-model="khipuApiKey"
+              tipo="password"
+              requerido
+              placeholder="p. ej. 1a4cbbbeb8bdb7e1d735..."
+              icono="key"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-on-surface mb-1">
+              Id de cobrador <span class="font-medium text-on-surface-variant">(opcional)</span>
+            </label>
+            <BaseInput
+              v-model.number="khipuReceiverId"
+              tipo="number"
+              placeholder="Aparece en tu cuenta de cobro de Khipu"
+              icono="badge"
+            />
+          </div>
+          <p class="text-xs font-medium text-on-surface-variant bg-surface-container rounded-xl px-3 py-2">
+            El cobro se crea con la URL de notificación ya configurada — no necesitas habilitar nada extra en Khipu. La
+            notificación de pago se valida con HMAC y se confirma la reserva automáticamente al conciliarse.
           </p>
-          <BaseInput
-            v-model="webhookSecret"
-            tipo="password"
-            placeholder="Déjalo vacío para no cambiarlo"
-            icono="verified_user"
-          />
         </div>
 
         <ErrorBanner :mensaje="errorMp" />
         <BaseToast :mensaje="toastMp" tipo="exito" @cerrar="toastMp = ''" />
 
         <BaseButton variante="primario" type="submit">Guardar Configuración</BaseButton>
+      </form>
+    </div>
+
+    <!-- Contacto (WhatsApp del salón) -->
+    <div class="card-festiva !p-6 max-w-2xl">
+      <h3 class="font-display font-bold text-on-surface mb-2">Botón de ayuda por WhatsApp</h3>
+      <p class="font-medium text-on-surface-variant text-sm mb-4">
+        Si un padre o abuelo se traba reservando o pagando la seña, verá un botón flotante en tu página pública que abre
+        una conversación contigo. Escribe acá el teléfono al que quieres que los contacten.
+      </p>
+
+      <form class="space-y-4" @submit.prevent="guardarContactoBtn">
+        <div>
+          <label class="block text-sm font-bold text-on-surface mb-1">Teléfono de WhatsApp del salón</label>
+          <BaseInput v-model="telefonoContacto" tipo="tel" placeholder="+56 9 1234 5678" icono="support_agent" />
+          <p class="text-xs font-medium text-on-surface-variant mt-1">
+            Déjalo vacío para ocultar el botón. Lo guardamos normalizado (569…).
+          </p>
+        </div>
+
+        <ErrorBanner :mensaje="errorContacto" />
+        <BaseToast :mensaje="toastContacto" tipo="exito" @cerrar="toastContacto = ''" />
+
+        <BaseButton variante="primario" type="submit">Guardar teléfono</BaseButton>
       </form>
     </div>
 

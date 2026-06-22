@@ -85,7 +85,7 @@ class PublicControllerIT {
         servicioRepository.save(s2);
 
         // Lunes 10:00–12:00, intervalo 30 min — base para el test de horas libres.
-        horarioAtencionService.guardar(tenantId,
+        horarioAtencionService.guardar(tenantId, 1L,
                 new HorarioRequest(30, List.of(new FranjaRequest(1, LocalTime.of(10, 0), LocalTime.of(12, 0)))));
     }
 

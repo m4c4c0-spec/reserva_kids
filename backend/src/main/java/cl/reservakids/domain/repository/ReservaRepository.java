@@ -111,4 +111,57 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     /** Ídem con filtro por estado (pestaña "Pendientes", "Confirmadas", etc.). */
     Page<Reserva> findByCuentaClienteIdAndEstadoOrderByCreadaEnDesc(
             Long cuentaClienteId, EstadoReserva estado, Pageable pageable);
+
+    /**
+     * Recordatorio 24h: citas por hora confirmadas cuyo inicio cae en [desde, hasta).
+     * Excluye las que ya tienen recordatorio enviado en la última hora (evita duplicados
+     * si el job corre más de una vez en la ventana).
+     */
+    @Query("""
+            SELECT r FROM Reserva r
+            WHERE r.estado = 'CONFIRMADA' AND r.inicio IS NOT NULL
+              AND r.inicio >= :desde AND r.inicio < :hasta
+            ORDER BY r.inicio""")
+    List<Reserva> findCitasConfirmadasProximas(@Param("desde") OffsetDateTime desde,
+                                               @Param("hasta") OffsetDateTime hasta);
+
+    /**
+     * Recordatorio 24h: cumpleañeros confirmados cuyo bloque cae en la fecha indicada.
+     */
+    @Query("""
+            SELECT r FROM Reserva r JOIN BloqueDisponible b ON b.id = r.bloqueId
+            WHERE r.estado = 'CONFIRMADA' AND r.bloqueId IS NOT NULL
+              AND b.fecha = :fecha
+            ORDER BY b.horaInicio""")
+    List<Reserva> findCumpleanosConfirmadosEnFecha(@Param("fecha") LocalDate fecha);
+
+    // ── Métricas del panel (dashboard) ──
+
+    /** Ingresos por señas de un tenant en un rango de meses. */
+    @Query("""
+            SELECT FUNCTION('TO_CHAR', r.creadaEn, 'YYYY-MM'), COALESCE(SUM(r.seniaClp), 0)
+            FROM Reserva r
+            WHERE r.tenantId = :tenantId AND r.estado IN ('CONFIRMADA', 'REALIZADA')
+              AND r.creadaEn >= :desde
+            GROUP BY FUNCTION('TO_CHAR', r.creadaEn, 'YYYY-MM')
+            ORDER BY FUNCTION('TO_CHAR', r.creadaEn, 'YYYY-MM')""")
+    List<Object[]> ingresosMensuales(@Param("tenantId") Long tenantId, @Param("desde") OffsetDateTime desde);
+
+    /** Conteo de reservas por servicio (top N). */
+    @Query("""
+            SELECT s.nombre, COUNT(r)
+            FROM Reserva r JOIN Servicio s ON s.id = r.servicioId
+            WHERE r.tenantId = :tenantId AND r.estado IN ('CONFIRMADA', 'REALIZADA')
+              AND s.activo = true
+            GROUP BY s.nombre
+            ORDER BY COUNT(r) DESC""")
+    List<Object[]> serviciosMasVendidos(@Param("tenantId") Long tenantId);
+
+    /** Tasa de ocupación mensual: días con al menos una reserva / días totales. */
+    @Query("""
+            SELECT COUNT(DISTINCT FUNCTION('TO_CHAR', r.creadaEn, 'YYYY-MM-DD'))
+            FROM Reserva r
+            WHERE r.tenantId = :tenantId AND r.estado IN ('CONFIRMADA', 'REALIZADA')
+              AND r.creadaEn >= :desde""")
+    long diasConReservas(@Param("tenantId") Long tenantId, @Param("desde") OffsetDateTime desde);
 }

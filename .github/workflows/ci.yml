@@ -20,10 +20,11 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Tests
-        run: mvn -B test
-      - name: Build
-        run: mvn -B package -DskipTests
+      # `verify` corre Surefire (unitarios) + Failsafe (los *IT con Testcontainers:
+      # arranque de contexto, migraciones Flyway V1.. y el test de concurrencia
+      # RNF-05). Requiere Docker, disponible en ubuntu-latest. Empaqueta el jar de paso.
+      - name: Tests (unitarios + integración) y build
+        run: mvn -B verify
 
   frontend:
     name: Frontend (Vue 3 + Vite)
@@ -44,3 +45,28 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
       - name: Build
         run: npm run build
+
+  # H5: análisis de seguridad — secretos filtrados (gitleaks) + dependencias
+  # vulnerables y secretos en el árbol (Trivy). Complementa el `npm audit` del frontend
+  # con cobertura del backend (pom) y un escaneo de secretos en todo el repo/historial.
+  seguridad:
+    name: Seguridad (secretos + dependencias)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks escanea también el historial de git
+      - name: Escaneo de secretos (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Escaneo de dependencias y secretos (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret
+          # Gate solo en CRITICAL para no bloquear el día 1 por CVEs transitivos sin fix;
+          # subir a HIGH,CRITICAL cuando el inventario esté limpio.
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

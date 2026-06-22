@@ -1,6 +1,7 @@
 package cl.reservakids.application;
 
 import cl.reservakids.application.dto.AuthDtos.ResetConfirmacionRequest;
+import cl.reservakids.application.usecase.AuthEventPort;
 import cl.reservakids.application.usecase.NotificacionPort;
 import cl.reservakids.application.usecase.PasswordResetService;
 import cl.reservakids.domain.model.PasswordResetToken;
@@ -40,6 +41,7 @@ class PasswordResetServiceTest {
     @Mock RefreshTokenRepository refreshTokenRepository;
     @Mock PasswordEncoder passwordEncoder;
     @Mock NotificacionPort notificacion;
+    @Mock AuthEventPort authEvent;
 
     @InjectMocks PasswordResetService service;
 
