@@ -26,7 +26,7 @@ public class HorarioAtencionController {
     @PutMapping
     public ResponseEntity<Void> guardar(@AuthenticationPrincipal AuthPrincipal principal,
                                         @Valid @RequestBody HorarioRequest req) {
-        horarioService.guardar(principal.tenantId(), req);
+        horarioService.guardar(principal.tenantId(), principal.usuarioId(), req);
         return ResponseEntity.noContent().build();
     }
 }

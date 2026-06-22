@@ -1,5 +1,6 @@
 package cl.reservakids.infrastructure;
 
+import cl.reservakids.domain.repository.RateLimitBucketRepository;
 import cl.reservakids.infrastructure.security.RateLimitFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -8,9 +9,17 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class RateLimitFilterTest {
 
@@ -18,7 +27,16 @@ class RateLimitFilterTest {
 
     @BeforeEach
     void setup() {
-        filter = new RateLimitFilter();
+        // H2: el conteo es atómico en BD. El mock simula ese upsert: incrementa por
+        // (ip|rutaTipo|minuto) y devuelve el nuevo valor, igual que el INSERT … RETURNING.
+        RateLimitBucketRepository repo = mock(RateLimitBucketRepository.class);
+        Map<String, Integer> contadores = new ConcurrentHashMap<>();
+        when(repo.incrementarYContar(anyString(), anyString(), anyLong(), anyInt()))
+                .thenAnswer(inv -> {
+                    String clave = inv.getArgument(0) + "|" + inv.getArgument(1) + "|" + inv.getArgument(2);
+                    return contadores.merge(clave, 1, Integer::sum);
+                });
+        filter = new RateLimitFilter(repo);
         ReflectionTestUtils.setField(filter, "trustProxy", true);
         ReflectionTestUtils.setField(filter, "publicMaxPorMinuto", 30);
         ReflectionTestUtils.setField(filter, "authMaxPorMinuto", 10);

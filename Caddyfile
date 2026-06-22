@@ -1,0 +1,29 @@
+reservakids.cl {
+    encode gzip
+
+    header {
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.mercadopago.cl https://*.mercadopago.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.mercadopago.com"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    }
+
+    handle /api/* {
+        reverse_proxy localhost:8080
+    }
+    handle /actuator/health {
+        reverse_proxy localhost:8080
+    }
+
+    handle {
+        root * /opt/reservakids/frontend/dist
+        try_files {path} /index.html
+        file_server
+    }
+}
+
+www.reservakids.cl {
+    redir https://reservakids.cl{uri} permanent
+}

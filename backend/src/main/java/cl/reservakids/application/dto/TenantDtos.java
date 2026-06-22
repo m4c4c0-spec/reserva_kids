@@ -2,6 +2,7 @@ package cl.reservakids.application.dto;
 
 import cl.reservakids.domain.model.*;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -16,8 +17,34 @@ public final class TenantDtos {
     /** Anti cierre accidental: el dueño debe escribir el slug exacto de su negocio. */
     public record CerrarRequest(@NotBlank String slugConfirmacion) {}
 
-    /** S3: mpWebhookSecret es opcional (el secreto de firma del webhook del panel de MP). */
-    public record ActualizarTokenRequest(String mpAccessToken, String mpWebhookSecret) {}
+    /** S3: mpAccessToken requerido; mpWebhookSecret opcional (el secreto de firma del webhook). */
+    public record ActualizarTokenRequest(
+            @NotBlank(message = "El Access Token de Mercado Pago es obligatorio")
+            @Size(max = 500) String mpAccessToken,
+            @Size(max = 500) String mpWebhookSecret) {}
+
+    /**
+     * V25: configuración de la pasarela de pago en línea (multi-pasarela). El dueño elige su
+     * pasarela y carga solo las credenciales de la elegida; las que lleguen vacías se dejan
+     * como están (no se borran al cambiar de pestaña). La validación de "creds obligatorias
+     * según la pasarela elegida" se hace en {@code TenantService.guardarConfiguracion}.
+     */
+    public record ActualizarConfigRequest(
+            @NotBlank(message = "Debes elegir una pasarela de pago")
+            @jakarta.validation.constraints.Pattern(regexp = "MERCADOPAGO|KHIPU",
+                    message = "Pasarela no soportada")
+            String pasarelaPago,
+            @Size(max = 500) String mpAccessToken,
+            @Size(max = 500) String mpWebhookSecret,
+            @Size(max = 512) String khipuApiKey,
+            Long khipuReceiverId) {}
+
+    /**
+     * V26: teléfono de WhatsApp del salón, para el botón flotante de ayuda del mini-sitio
+     * público. El dueño lo escribe como quiera (con o sin +56, espacios, etc.) y el servicio
+     * lo normaliza a E.164 sin '+' (formato que wa.me espera). Vacío = quitarlo (oculta el botón).
+     */
+    public record ActualizarContactoRequest(String telefonoContacto) {}
 
     /**
      * Export completo del tenant en JSON plano (agnóstico del motor de BD — falla 3.1):

@@ -1,6 +1,7 @@
 package cl.reservakids.application.usecase;
 
 import cl.reservakids.application.dto.AuthDtos.ResetConfirmacionRequest;
+import cl.reservakids.domain.model.AuthEvent;
 import cl.reservakids.domain.model.PasswordResetToken;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.model.Usuario;
@@ -35,6 +36,7 @@ public class PasswordResetService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final NotificacionPort notificacion;
+    private final AuthEventPort authEvent;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.password-reset.minutos}")
@@ -48,7 +50,9 @@ public class PasswordResetService {
      */
     @Transactional
     public void solicitarResetPassword(String email) {
-        usuarioRepository.findByEmail(AuthCrypto.normalizarEmail(email)).ifPresent(usuario -> {
+        String emailNorm = AuthCrypto.normalizarEmail(email);
+        if (emailNorm == null) return;
+        usuarioRepository.findByEmail(emailNorm).ifPresent(usuario -> {
             Tenant tenant = tenantRepository.findById(usuario.getTenantId()).orElseThrow();
             if (!tenant.isActivo()) {
                 return; // suspendido/cerrado (falla 3.3): sin reset, y sin revelar nada
@@ -68,6 +72,8 @@ public class PasswordResetService {
 
             notificacion.resetPassword(usuario, tokenPlano); // AFTER_COMMIT en el adaptador
         });
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, null, emailNorm,
+                AuthEvent.RESET_REQUEST, AuthEvent.SUCCESS, null);
     }
 
     /**
@@ -85,5 +91,7 @@ public class PasswordResetService {
         Usuario usuario = usuarioRepository.findById(token.getUsuarioId()).orElseThrow();
         usuario.setPasswordHash(passwordEncoder.encode(req.nuevaPassword()));
         refreshTokenRepository.revocarTodosDeUsuario(usuario.getId());
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), usuario.getEmail(),
+                AuthEvent.RESET_COMPLETE, AuthEvent.SUCCESS, "Contraseña cambiada, sesiones revocadas");
     }
 }

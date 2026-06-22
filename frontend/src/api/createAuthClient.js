@@ -11,6 +11,9 @@ export function createAuthClient(useStore, loginRoute) {
     baseURL: (import.meta.env.VITE_API_URL || '') + '/api',
     // Refresh token en cookie HttpOnly: el navegador la envía al /refresh solo con credenciales.
     withCredentials: true,
+    // RNF-07 CSRF: requiere este header en endpoints de cookie (refresh/logout).
+    // Un atacante cross-site no puede setearlo sin preflight CORS → rechazado.
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
   })
 
   api.interceptors.request.use((config) => {

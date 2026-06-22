@@ -80,9 +80,15 @@ public class GlobalExceptionHandler {
         return body(HttpStatus.CONFLICT, "La reserva fue modificada por otra operación; recarga e intenta de nuevo");
     }
 
+    /**
+     * Autenticación fallida: nunca exponer el motivo real. Si es credencial inválida,
+     * tenant suspendido/cerrado, o token reusado, el atacante recibe el mismo mensaje.
+     * El detalle real se loguea internamente para diagnóstico.
+     */
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorBody> credenciales(BadCredentialsException e) {
-        return body(HttpStatus.UNAUTHORIZED, e.getMessage());
+        log.warn("Autenticación fallida: {}", e.getMessage());
+        return body(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
     }
 
     @ExceptionHandler(Exception.class)
