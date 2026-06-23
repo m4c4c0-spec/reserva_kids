@@ -13,7 +13,7 @@
 
     <groupId>cl.reservakids</groupId>
     <artifactId>reservakids-api</artifactId>
-    <version>0.1.0</version>
+    <version>0.3.0</version>
     <name>ReservaKids API</name>
     <description>API de reservas para negocios de cumpleaños infantiles</description>
 
