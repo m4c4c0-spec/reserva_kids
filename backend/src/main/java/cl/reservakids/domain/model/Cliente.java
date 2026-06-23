@@ -31,7 +31,7 @@ public class Cliente {
         if (raw == null) {
             return null;
         }
-        String digitos = raw.replaceAll("[^0-9]", "");
+        String digitos = raw.replaceAll("\\D", "");
         if (digitos.startsWith("00")) {
             digitos = digitos.substring(2); // prefijo internacional 00 (fix #8: 0056... → 56...)
         }
@@ -53,6 +53,9 @@ public class Cliente {
 
     @Column(nullable = false)
     private String telefono;
+
+    @Column(length = 12)
+    private String rut;
 
     private String email;
 
@@ -79,6 +82,7 @@ public class Cliente {
     public void anonimizar(OffsetDateTime cuando) {
         this.nombre = NOMBRE_ANONIMO;
         this.telefono = "anon-" + id;
+        this.rut = null;
         this.email = null;
         this.consentimientoEn = null;
         this.anonimizadoEn = cuando;

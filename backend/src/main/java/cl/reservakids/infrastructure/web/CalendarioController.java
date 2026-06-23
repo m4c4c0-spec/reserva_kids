@@ -32,13 +32,13 @@ public class CalendarioController {
     public ResponseEntity<BloqueResponse> crear(@AuthenticationPrincipal AuthPrincipal principal,
                                                 @Valid @RequestBody BloqueRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(calendarioService.crear(principal.tenantId(), req));
+                .body(calendarioService.crear(principal.tenantId(), principal.usuarioId(), req));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(@AuthenticationPrincipal AuthPrincipal principal,
                                          @PathVariable Long id) {
-        calendarioService.eliminar(principal.tenantId(), id);
+        calendarioService.eliminar(principal.tenantId(), principal.usuarioId(), id);
         return ResponseEntity.noContent().build();
     }
 }

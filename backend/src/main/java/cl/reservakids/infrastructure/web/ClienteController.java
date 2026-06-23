@@ -21,7 +21,7 @@ public class ClienteController {
     @PostMapping("/{id}/anonimizar")
     public ResponseEntity<Void> anonimizar(@AuthenticationPrincipal AuthPrincipal principal,
                                            @PathVariable Long id) {
-        clienteService.anonimizar(principal.tenantId(), id);
+        clienteService.anonimizar(principal.tenantId(), principal.usuarioId(), id);
         return ResponseEntity.noContent().build();
     }
 }

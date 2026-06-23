@@ -20,13 +20,14 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Tests
-        run: mvn -B test
-      - name: Build
-        run: mvn -B package -DskipTests
+      # `verify` corre Surefire (unitarios) + Failsafe (los *IT con Testcontainers:
+      # arranque de contexto, migraciones Flyway V1.. y el test de concurrencia
+      # RNF-05). Requiere Docker, disponible en ubuntu-latest. Empaqueta el jar de paso.
+      - name: Tests (unitarios + integración) y build
+        run: mvn -B verify
 
   frontend:
-    name: Frontend (Vue 3 + Vite)
+    name: Frontend (Nuxt 3 SSR)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,5 +41,39 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Instalar dependencias
         run: npm ci
+      - name: Auditar dependencias de producción (high/critical)
+        run: npm audit --omit=dev --audit-level=high
       - name: Build
         run: npm run build
+
+  # H5: análisis de seguridad — secretos filtrados (gitleaks) + dependencias
+  # vulnerables y secretos en el árbol (Trivy). Complementa el `npm audit` del frontend
+  # con cobertura del backend (pom) y un escaneo de secretos en todo el repo/historial.
+  seguridad:
+    name: Seguridad (secretos + dependencias)
+    runs-on: ubuntu-latest
+    # gitleaks-action@v2 consulta los commits del PR vía API; sin estos permisos
+    # falla con "403 Resource not accessible by integration". Solo lectura.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks escanea también el historial de git
+      - name: Escaneo de secretos (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Escaneo de dependencias y secretos (Trivy)
+        # v0.30.0 referenciaba aquasecurity/setup-trivy@v0.2.2, cuyo tag fue eliminado
+        # y provocaba "Unable to resolve action". v0.36.0 pinnea setup-trivy por SHA.
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret
+          # Gate solo en CRITICAL para no bloquear el día 1 por CVEs transitivos sin fix;
+          # subir a HIGH,CRITICAL cuando el inventario esté limpio.
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

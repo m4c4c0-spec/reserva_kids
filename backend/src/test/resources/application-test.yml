@@ -1,0 +1,62 @@
+# Perfil de test de integración con Testcontainers.
+# Spring Boot reescribe la URL de datasource con la del contenedor Postgres levantado dinámicamente.
+spring:
+  datasource:
+    # TC_DAEMON=true mantiene el contenedor Postgres vivo durante toda la JVM. Sin esto,
+    # cuando el pool cierra su última conexión (entre tests o bajo churn de concurrencia)
+    # Testcontainers APAGA el contenedor → "Connection refused" al reabrir (causa real del
+    # rojo de los IT de concurrencia en CI).
+    url: jdbc:tc:postgresql:16-alpine:///reservakids?TC_DAEMON=true
+    hikari:
+      # ReservaConcurrenciaIT lanza 10 hilos simultáneos; con el pool por defecto (10) y
+      # sin margen, se agota y los hilos caen por timeout (30 s) en vez de por el 409 esperado.
+      maximum-pool-size: 20
+      connection-timeout: 20000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+app:
+  jwt:
+    secret: test-secret-de-64-bytes-minimo-para-que-funcione-hs256-en-tests
+    issuer: reservakids-test
+    audience: reservakids-web-test
+    access-minutes: 15
+    refresh-days: 7
+  mail:
+    from: test@reservakids.cl
+  password-reset:
+    minutos: 30
+  magic-link:
+    minutos: 10
+  reservas:
+    expiracion-horas: 48
+    cotizacion-expiracion-dias: 14
+  citas:
+    pago-expiracion-min: 30
+  clientes:
+    retencion-meses: 24
+  tenants:
+    purga-dias-tras-cierre: 90
+  zona-horaria: America/Santiago
+  rate-limit:
+    # Límites altos a propósito: en los IT, MockMvc comparte una sola IP (127.0.0.1),
+    # así que los tests con varios logins (AdminControllerIT) o varios webhooks
+    # (WebhookMercadoPagoIT) chocarían con los topes de producción y darían 429.
+    # El rate limiting se prueba aislado en RateLimitFilterTest; aquí solo estorbaría.
+    public-max-por-minuto: 100000
+    auth-max-por-minuto: 100000
+    cliente-auth-max-por-minuto: 100000
+    admin-auth-max-por-minuto: 100000
+    panel-max-por-minuto: 100000
+    webhook-max-por-minuto: 100000
+  mercadopago:
+    webhook-signature-max-age-minutes: 5
+  khipu:
+    api-base: https://api.khipu.test
+    webhook-signature-max-age-minutes: 5
+  security:
+    trust-proxy: false
+    cred-key: ""

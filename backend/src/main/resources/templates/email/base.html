@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title th:text="${titulo}">ReservaKids</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f0ff;font-family:'Segoe UI',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f0ff;padding:24px 0">
+  <tr>
+    <td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#b5007d,#ff6b35);padding:32px 24px;text-align:center">
+            <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.5px">
+              🎈 ReservaKids
+            </h1>
+          </td>
+        </tr>
+
+        <!-- Contenido -->
+        <tr>
+          <td style="padding:32px 24px;color:#2d1b3d;font-size:15px;line-height:1.7">
+            <th:block th:insert="${contenido}" />
+          </td>
+        </tr>
+
+        <!-- Footer legal -->
+        <tr>
+          <td style="padding:24px;background:#faf8fd;border-top:1px solid #e8e0f0;text-align:center">
+            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#b5007d">
+              ReservaKids &mdash; Gestión de reservas para cumpleaños infantiles
+            </p>
+            <p style="margin:0;font-size:11px;color:#7a6e85;line-height:1.6">
+              Este correo es transaccional y fue enviado por una acción en tu cuenta.
+              Si no lo esperabas, puedes ignorarlo o contactarnos en
+              <a href="mailto:soporte@reservakids.cl" style="color:#b5007d;text-decoration:none">soporte@reservakids.cl</a>.
+            </p>
+            <p style="margin:12px 0 0;font-size:10px;color:#a094b0">
+              ReservaKids SpA &middot; Victoria, La Araucanía, Chile<br/>
+              <a href="https://reservakids.cl/privacidad" style="color:#a094b0">Política de Privacidad</a>
+              &middot; Ley 21.719 de Protección de Datos Personales
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

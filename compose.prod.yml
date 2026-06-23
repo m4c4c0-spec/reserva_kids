@@ -1,0 +1,60 @@
+# Overlay de PRODUCCIÓN. Uso: docker compose -f docker-compose.yml -f compose.prod.yml ...
+#
+# IMPORTANTE — `!override` en `ports`:
+#   Docker Compose FUSIONA las listas de `ports` entre archivos (no las reemplaza).
+#   Sin `!override`, declarar "127.0.0.1:8080:8080" aquí NO quita el "8080:8080"
+#   (0.0.0.0) del compose base: el servicio quedaría publicado en AMBOS, dejando
+#   Postgres/Grafana/etc. expuestos a internet en el VPS. `!override` fuerza el
+#   reemplazo total de la lista, dejando solo el bind a loopback.
+services:
+  backend:
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    environment:
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "true"
+
+  frontend-public:
+    ports: !override
+      - "127.0.0.1:3000:3000"
+
+  frontend-panel:
+    ports: !override
+      - "127.0.0.1:3001:3000"
+
+  db:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+
+  mailpit:
+    profiles:
+      - dev
+
+  # ── Hardening del stack de observabilidad en producción ──
+  # En el compose base estos servicios bindean a 0.0.0.0 (cómodo en dev). En un VPS
+  # eso los deja accesibles desde internet SIN autenticación. Aquí se fuerzan a
+  # 127.0.0.1: solo alcanzables vía túnel SSH (ssh -L 3002:127.0.0.1:3002 vps).
+  # Además deploy-prod.sh NO los arranca por defecto (defensa en profundidad).
+  otel-collector:
+    ports: !override
+      - "127.0.0.1:4318:4318"
+
+  tempo:
+    ports: !override
+      - "127.0.0.1:4317:4317"
+
+  prometheus:
+    ports: !override
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    ports: !override
+      - "127.0.0.1:3002:3000"
+    environment:
+      # Sin admin anónimo en prod: el acceso anónimo con rol Admin del compose base
+      # es un agujero crítico si el puerto queda expuesto. Login obligatorio.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # La contraseña del admin sale de .env (deploy-prod.sh la autogenera si falta).
+      # Se usa :- y no :? para no romper el overlay cuando se levantan otros servicios.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_INSTALL_PLUGINS: ""
