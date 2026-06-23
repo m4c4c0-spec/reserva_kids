@@ -33,7 +33,9 @@ const router = createRouter({
     },
     { path: '/privacidad', component: () => import('../views/PrivacidadView.vue') },
     // A4: directorio público (sin login). Debe ir ANTES del catch-all /:slug para
-    // que /negocios no se interprete como el slug de un negocio.
+    // que /negocios no se interprete como el slug de un negocio. El apoderado mira
+    // precios y disponibilidad sin registrarse; la cuenta se pide al AGENDAR/PAGAR
+    // (/clientes/agendar/:slug), no al navegar (funnel freemium).
     { path: '/negocios', component: () => import('../views/DirectorioPublicoView.vue') },
     { path: '/clientes', component: () => import('../views/ClienteHomeView.vue'), meta: { requiereCliente: true } },
     {

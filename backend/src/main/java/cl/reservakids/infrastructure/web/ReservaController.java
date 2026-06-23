@@ -27,9 +27,10 @@ public class ReservaController {
     @GetMapping
     public Page<ReservaResponse> listar(@AuthenticationPrincipal AuthPrincipal principal,
                                         @RequestParam(required = false) EstadoReserva estado,
+                                        @RequestParam(required = false) String q,
                                         @RequestParam(defaultValue = "0") int page,
                                         @RequestParam(defaultValue = "20") int size) {
-        return reservaService.listar(principal.tenantId(), estado,
+        return reservaService.listar(principal.tenantId(), estado, q,
                 PageRequest.of(page, Math.min(size, 100)));
     }
 
