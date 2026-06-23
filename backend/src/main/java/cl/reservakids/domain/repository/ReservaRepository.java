@@ -74,10 +74,14 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     /**
      * V15: advisory lock por (tenant_id, fecha) para serializar agendamientos de un
      * mismo negocio en un mismo día. Libera automáticamente al COMMIT/ROLLBACK.
+     * <p>
+     * No usa {@code @Modifying}: {@code pg_advisory_xact_lock} retorna {@code void}
+     * (una fila con valor nulo), y Hibernate lanzaba "Se retornó un resultado cuando
+     * no se esperaba ninguno" (SQLState 0100E). Como SELECT simple Spring Data ejecuta
+     * la función, adquiere el lock y descarta el valor de retorno.
      */
-    @Modifying
     @Query(value = "SELECT pg_advisory_xact_lock(hashtext(cast(:tenantId AS text) || '-' || cast(:fecha AS text)))", nativeQuery = true)
-    void bloquearDia(@Param("tenantId") Long tenantId, @Param("fecha") LocalDate fecha);
+    Object bloquearDia(@Param("tenantId") Long tenantId, @Param("fecha") LocalDate fecha);
 
     /** Expiración de citas no pagadas (PENDIENTE_PAGO) creadas antes del límite — liberan la hora. */
     List<Reserva> findByEstadoAndInicioIsNotNullAndCreadaEnBefore(EstadoReserva estado, OffsetDateTime limite);
