@@ -6,6 +6,8 @@ import cl.reservakids.domain.model.PasswordResetToken;
 import cl.reservakids.domain.model.RefreshToken;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.model.Usuario;
+import cl.reservakids.infrastructure.oauth2.OAuth2Service;
+import cl.reservakids.infrastructure.oauth2.OAuth2UserInfo;
 import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.TenantRepository;
@@ -36,10 +38,12 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final HorarioAtencionService horarioAtencionService;
+    private final RbacService rbacService;
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
     private final AuthEventPort authEvent;
     private final NotificacionPort notificacion;
+    private final OAuth2Service oauth2Service;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.magic-link.minutos:10}")
@@ -81,6 +85,9 @@ public class AuthService {
         // aparecería en el directorio de clientes.
         horarioAtencionService.crearHorarioPorDefecto(tenant.getId());
 
+        // RBAC: roles predefinidos para el personal del negocio nuevo
+        rbacService.crearRolesPorDefecto(tenant.getId());
+
         Usuario usuario = new Usuario();
         usuario.setTenantId(tenant.getId());
         usuario.setEmail(email);
@@ -101,6 +108,13 @@ public class AuthService {
                             AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Email no registrado");
                     return new BadCredentialsException("Credenciales inválidas");
                 });
+        if (usuario.isOauth() && usuario.getPasswordHash() == null) {
+            authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                    AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Cuenta OAuth sin contraseña");
+            throw new BadCredentialsException(
+                    "Esta cuenta usa inicio de sesión con " + usuario.getOauthProvider()
+                    + ". Por favor inicia sesión con ese proveedor.");
+        }
         if (!passwordEncoder.matches(req.password(), usuario.getPasswordHash())) {
             authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
                     AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Contraseña incorrecta");
@@ -235,6 +249,74 @@ public class AuthService {
             refreshTokenRepository.findByTokenHash(AuthCrypto.sha256(refreshToken))
                     .ifPresent(t -> refreshTokenRepository.revocarTodosDeUsuario(t.getUsuarioId()));
         }
+    }
+
+    @Transactional
+    public TokenResponse oauth2Login(String provider, String code, String redirectUri,
+                                     String nombreNegocio, String slug) {
+        OAuth2UserInfo info = oauth2Service.verify(provider, code, redirectUri);
+        String email = AuthCrypto.normalizarEmail(info.email());
+
+        var existingByProvider = usuarioRepository.findByOauthProviderAndOauthProviderId(
+                info.provider(), info.providerId());
+        if (existingByProvider.isPresent()) {
+            Usuario usuario = existingByProvider.get();
+            Tenant tenant = tenantRepository.findById(usuario.getTenantId()).orElseThrow();
+            verificarTenantOperativo(tenant);
+            authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                    AuthEvent.LOGIN, AuthEvent.SUCCESS, "OAuth2 " + provider);
+            return emitirTokens(usuario, tenant);
+        }
+
+        var existingByEmail = usuarioRepository.findByEmail(email);
+        if (existingByEmail.isPresent()) {
+            Usuario usuario = existingByEmail.get();
+            if (usuario.getPasswordHash() != null) {
+                // La cuenta ya existe con contraseña; vincular OAuth
+                usuario.setOauthProvider(provider);
+                usuario.setOauthProviderId(info.providerId());
+            }
+            Tenant tenant = tenantRepository.findById(usuario.getTenantId()).orElseThrow();
+            verificarTenantOperativo(tenant);
+            authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                    AuthEvent.LOGIN, AuthEvent.SUCCESS, "OAuth2 " + provider + " vinculado");
+            return emitirTokens(usuario, tenant);
+        }
+
+        // Nuevo registro por OAuth2: requiere nombreNegocio y slug
+        if (nombreNegocio == null || nombreNegocio.isBlank()
+                || slug == null || slug.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Para registrarte con " + provider + " necesitas indicar el nombre y slug del negocio");
+        }
+        if (SLUGS_RESERVADOS.contains(slug)) {
+            throw new IllegalArgumentException("Ese slug está reservado, elige otro");
+        }
+        if (tenantRepository.existsBySlug(slug)) {
+            throw new IllegalArgumentException("El slug ya está en uso");
+        }
+
+        Tenant tenant = new Tenant();
+        tenant.setNombre(nombreNegocio);
+        tenant.setSlug(slug);
+        tenant = tenantRepository.save(tenant);
+
+        horarioAtencionService.crearHorarioPorDefecto(tenant.getId());
+
+        // RBAC: roles predefinidos para el personal
+        rbacService.crearRolesPorDefecto(tenant.getId());
+
+        Usuario usuario = new Usuario();
+        usuario.setTenantId(tenant.getId());
+        usuario.setEmail(email);
+        usuario.setOauthProvider(provider);
+        usuario.setOauthProviderId(info.providerId());
+        usuarioRepository.save(usuario);
+
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS,
+                "Registro OAuth2 " + provider + ": " + slug);
+        return emitirTokens(usuario, tenant);
     }
 
     private TokenResponse emitirTokens(Usuario usuario, Tenant tenant) {

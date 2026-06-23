@@ -24,6 +24,10 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
         response.setHeader("X-Frame-Options", "DENY");
         response.setHeader("X-XSS-Protection", "0"); // obsoleto pero desactiva el filtro XSS del navegador (redundante con CSP)
         response.setHeader("Referrer-Policy", "no-referrer");
+        response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+        response.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+        response.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+        response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
         chain.doFilter(request, response);
     }
 

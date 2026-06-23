@@ -3,6 +3,7 @@ package cl.reservakids.infrastructure.web;
 import cl.reservakids.application.dto.AuthDtos.*;
 import cl.reservakids.application.usecase.AuthService;
 import cl.reservakids.application.usecase.PasswordResetService;
+import cl.reservakids.infrastructure.oauth2.OAuth2Service;
 import cl.reservakids.infrastructure.security.AuthPrincipal;
 import cl.reservakids.infrastructure.security.RefreshCookieService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,6 +22,7 @@ public class AuthController {
     private final AuthService authService;
     private final PasswordResetService passwordResetService;
     private final RefreshCookieService refreshCookieService;
+    private final OAuth2Service oauth2Service;
 
     @PostMapping("/register")
     public ResponseEntity<TokenResponse> register(@Valid @RequestBody RegistroRequest req,
@@ -103,6 +105,31 @@ public class AuthController {
     @PostMapping("/magic/entrar")
     public TokenResponse entrarMagic(@Valid @RequestBody MagicEntradaRequest req, HttpServletResponse res) {
         TokenResponse tokens = authService.entrarConMagicLink(req.token());
+        refreshCookieService.setear(res, RefreshCookieService.COOKIE_DUENO, tokens.refreshToken());
+        return sinRefresh(tokens);
+    }
+
+    /** OAuth2/SSO: obtiene la URL de autorización para el proveedor indicado. */
+    @GetMapping("/oauth2/{provider}/authorize")
+    public ResponseEntity<OAuth2AuthorizeResponse> oauth2Authorize(
+            @PathVariable String provider,
+            @RequestParam(defaultValue = "dueno") String type) {
+        String url = oauth2Service.buildAuthorizeUrl(provider, type);
+        if (url == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(new OAuth2AuthorizeResponse(url));
+    }
+
+    /** OAuth2/SSO: canjea el código del proveedor por tokens de la app. */
+    @PostMapping("/oauth2/{provider}")
+    public TokenResponse oauth2Login(
+            @PathVariable String provider,
+            @Valid @RequestBody OAuth2LoginRequest req,
+            HttpServletResponse res) {
+        oauth2Service.verifyState(req.state(), "dueno", provider);
+        TokenResponse tokens = authService.oauth2Login(
+                provider, req.code(), req.redirectUri(), req.nombreNegocio(), req.slug());
         refreshCookieService.setear(res, RefreshCookieService.COOKIE_DUENO, tokens.refreshToken());
         return sinRefresh(tokens);
     }

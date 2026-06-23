@@ -29,11 +29,13 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # mailpit NO va en depends_on: en prod queda tras el perfil 'dev' (compose.prod.yml),
+    # y una dependencia dura a un servicio sin perfil activo invalida el proyecto. El
+    # backend degrada sin SMTP (el health de mail está off y JavaMailSender conecta al
+    # enviar, no al arrancar), así que no necesita esperar a mailpit.
     depends_on:
       db:
         condition: service_healthy
-      mailpit:
-        condition: service_started
     environment:
       DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-reservakids}
       DB_USER: ${POSTGRES_USER:-reservakids_app}
@@ -69,6 +71,9 @@ services:
       WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
       WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID:-}
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      # Alertas proactivas a Operaciones (Slack Incoming Webhook). Vacío = stub que loguea.
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      ALERTAS_WEBHOOK_UMBRAL: ${ALERTAS_WEBHOOK_UMBRAL:-3}
       RETENCION_CLIENTE_MESES: ${RETENCION_CLIENTE_MESES:-24}
       TENANT_PURGA_DIAS: ${TENANT_PURGA_DIAS:-90}
       # V25: Khipu (transferencias) — alternativa a Mercado Pago
@@ -84,6 +89,20 @@ services:
       RATE_LIMIT_PANEL: ${RATE_LIMIT_PANEL:-60}
       RATE_LIMIT_WEBHOOK: ${RATE_LIMIT_WEBHOOK:-5}
       MP_WEBHOOK_SIG_MAX_AGE_MINUTES: ${MP_WEBHOOK_SIG_MAX_AGE_MINUTES:-5}
+      # Provisión Automática Single-Tenant (Licencia Exclusiva)
+      RESERVAKIDS_SINGLE_TENANT_ENABLED: ${RESERVAKIDS_SINGLE_TENANT_ENABLED:-false}
+      RESERVAKIDS_SINGLE_TENANT_SLUG: ${RESERVAKIDS_SINGLE_TENANT_SLUG:-}
+      RESERVAKIDS_SINGLE_TENANT_NOMBRE: ${RESERVAKIDS_SINGLE_TENANT_NOMBRE:-}
+      RESERVAKIDS_SINGLE_TENANT_ADMIN_EMAIL: ${RESERVAKIDS_SINGLE_TENANT_ADMIN_EMAIL:-}
+      RESERVAKIDS_SINGLE_TENANT_ADMIN_PASSWORD: ${RESERVAKIDS_SINGLE_TENANT_ADMIN_PASSWORD:-}
+      # OAuth2 SSO
+      OAUTH2_GOOGLE_CLIENT_ID: ${OAUTH2_GOOGLE_CLIENT_ID:-}
+      OAUTH2_GOOGLE_CLIENT_SECRET: ${OAUTH2_GOOGLE_CLIENT_SECRET:-}
+      # Observabilidad: tracing distribuido (OpenTelemetry → OTLP Collector)
+      OTLP_TRACES_ENDPOINT: ${OTLP_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      TRACING_SAMPLE_RATE: ${TRACING_SAMPLE_RATE:-1.0}  # 100% en dev; 0.1 en prod
+    # Puerto expuesto para desarrollo híbrido (Vite local + backend en Docker).
+    # En despliegue full-Docker, el tráfico va por Caddy → backend:8080 interno.
     ports:
       - "8080:8080"
     # Falla #8 (revisión 2 años): sin esto, una JVM muerta seguía "running" para Docker
@@ -94,5 +113,152 @@ services:
       retries: 3
       start_period: 60s
 
+  # ── Micro-Frontends (Nuxt 3 SSR): dos unidades de deploy independientes ──
+  # La app completa se construye desde la misma imagen. Se levantan DOS contenedores
+  # Node SSR separados. Caddy rutea por path (ver Caddyfile.docker): la app pública
+  # de ventas y el Panel del Dueño viven en procesos/contenedores distintos. Si un
+  # deploy rompe el Panel, la app pública de reservas sigue operando con SSR intacto.
+  # En modo Single-Tenant, VITE_SINGLE_TENANT_SLUG se inyecta como env var al arrancar.
+
+  # App PÚBLICA de ventas/reservas: / , /:slug , /invitacion , /negocios , /privacidad
+  frontend-public:
+    build: ./frontend
+    image: reservakids-frontend:local
+    restart: unless-stopped
+    ports:
+      - "5173:3000"
+    environment:
+      VITE_SINGLE_TENANT_SLUG: ${RESERVAKIDS_SINGLE_TENANT_SLUG:-}
+      NUXT_PUBLIC_SINGLE_TENANT_SLUG: ${RESERVAKIDS_SINGLE_TENANT_SLUG:-}
+      VITE_API_TARGET: ${VITE_API_TARGET:-http://backend:8080}
+      NUXT_PUBLIC_API_URL: ${FRONTEND_URL:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # App del PANEL (administrativa): /panel , /admin , /clientes , /staff , /login , /reset , /oauth2
+  # Reutiliza la misma imagen ya construida por frontend-public (image: reservakids-frontend:local).
+  frontend-panel:
+    build: ./frontend
+    image: reservakids-frontend:local
+    restart: unless-stopped
+    ports:
+      - "5174:3000"
+    environment:
+      VITE_SINGLE_TENANT_SLUG: ${RESERVAKIDS_SINGLE_TENANT_SLUG:-}
+      NUXT_PUBLIC_SINGLE_TENANT_SLUG: ${RESERVAKIDS_SINGLE_TENANT_SLUG:-}
+      VITE_API_TARGET: ${VITE_API_TARGET:-http://backend:8080}
+      NUXT_PUBLIC_API_URL: ${FRONTEND_URL:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Observabilidad: OpenTelemetry Collector + Grafana + Tempo + Prometheus ──
+
+  # OTel Collector: recibe trazas OTLP de la app y las reenvía a Tempo.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.122.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-config.yml"]
+    volumes:
+      - ./otelcol-config.yml:/etc/otelcol-config.yml:ro
+    ports:
+      - "4318:4318"  # OTLP HTTP/protobuf (usa la app backend)
+    depends_on:
+      - tempo
+
+  # Tempo: almacén de trazas distribuidas. Recibe de OTel Collector vía OTLP gRPC.
+  tempo:
+    image: grafana/tempo:2.7.2
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./tempo-config.yml:/etc/tempo.yml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "4317:4317"  # OTLP gRPC (usado por el collector)
+
+  # Prometheus: recolecta métricas de /actuator/prometheus y las expone a Grafana.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+
+  # Grafana: visualización de trazas (Tempo) y métricas (Prometheus) en dashboards.
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    ports:
+      - "3002:3000"
+    depends_on:
+      - tempo
+      - prometheus
+
+  # ── Reverse Proxy (Caddy) ──
+  # Termina HTTPS en produccion. En dev expone :80 y rutea frontend + API.
+  # Termina HTTPS en produccion. En dev expone :80 y rutea frontend + API.
+  # Si no necesitas reverse proxy local, comenta este servicio y usa los puertos directos.
+  caddy:
+    image: caddy:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.docker:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - frontend-public
+      - frontend-panel
+      - backend
+
+  # ── Backup Automatico (pg_dump diario 03:00 AM) ──
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-reservakids_app}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?definir en .env}
+      PGDATABASE: ${POSTGRES_DB:-reservakids}
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: "14"
+    volumes:
+      - backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  caddy_data:
+  backups:
+  tempo_data:
+  prometheus_data:

@@ -4,6 +4,8 @@ import cl.reservakids.domain.model.Reserva;
 import cl.reservakids.domain.model.Rut;
 import jakarta.validation.constraints.*;
 
+import java.util.List;
+
 public final class ReservaDtos {
 
     private ReservaDtos() {}
@@ -19,6 +21,9 @@ public final class ReservaDtos {
             @Min(1) @Max(500) Integer numNinos,
             @Size(max = 80) String comuna,
             @Size(max = 2000) String comentarios,
+            // RF-05: IDs de servicios adicionales (extras) elegidos en el sitio público.
+            // Opcional; el backend valida que pertenezcan al negocio y sean adicionales activos.
+            @Size(max = 20) List<@NotNull Long> adicionalIds,
             // Ley 21.719: consentimiento expreso del titular para tratar sus datos
             @NotNull @AssertTrue(message = "debes aceptar el tratamiento de tus datos para enviar la solicitud")
             Boolean aceptaDatos) {}

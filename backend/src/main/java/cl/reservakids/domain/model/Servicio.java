@@ -34,4 +34,12 @@ public class Servicio {
 
     @Column(nullable = false)
     private boolean activo = true;
+
+    /** V29: servicio adicional opcional (pinta-caritas, pizzas extra). No se muestra como principal en el booking. */
+    @Column(name = "es_adicional", nullable = false)
+    private boolean esAdicional = false;
+
+    /** V30: stock fisico para servicios adicionales (piñatas, globos). Nulo = stock infinito. */
+    @Column(name = "stock")
+    private Integer stock;
 }

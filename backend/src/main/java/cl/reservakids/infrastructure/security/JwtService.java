@@ -1,6 +1,7 @@
 package cl.reservakids.infrastructure.security;
 
 import cl.reservakids.application.usecase.TokenPort;
+import cl.reservakids.domain.model.Staff;
 import cl.reservakids.domain.model.Usuario;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -94,6 +95,36 @@ public class JwtService implements TokenPort {
                 .expiration(Date.from(ahora.plus(accessTtl)))
                 .claim("rol", "ADMIN")
                 .claim("email", email)
+                .signWith(key)
+                .compact();
+    }
+
+    /** Staff del negocio: rol STAFF y tenantId del negocio al que pertenecen. */
+    public String emitirStaff(Staff staff) {
+        Instant ahora = Instant.now();
+        return Jwts.builder()
+                .subject(String.valueOf(staff.getId()))
+                .issuer(issuer)
+                .audience().add(audience).and()
+                .issuedAt(Date.from(ahora))
+                .expiration(Date.from(ahora.plus(accessTtl)))
+                .claim("tenantId", staff.getTenantId())
+                .claim("rol", "STAFF")
+                .claim("nombre", staff.getNombre())
+                .signWith(key)
+                .compact();
+    }
+
+    public String emitirRefreshStaff(Staff staff) {
+        Instant ahora = Instant.now();
+        return Jwts.builder()
+                .subject(String.valueOf(staff.getId()))
+                .issuer(issuer)
+                .audience().add(audience).and()
+                .issuedAt(Date.from(ahora))
+                .expiration(Date.from(ahora.plus(Duration.ofDays(30))))
+                .claim("rol", "STAFF")
+                .claim("tenantId", staff.getTenantId())
                 .signWith(key)
                 .compact();
     }

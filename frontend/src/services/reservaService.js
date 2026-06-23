@@ -1,4 +1,5 @@
 import api from '../api/client'
+import { headersConIdempotencia, resetIdempotencyKey } from '../composables/idempotencia'
 
 export async function listar(estado, page = 0, size = 20, q = '') {
   const params = { page, size }
@@ -29,6 +30,36 @@ export async function cancelar(id, motivo) {
 }
 
 export async function registrarPago(id, datos) {
-  const { data } = await api.post(`/reservas/${id}/pagos`, datos)
+  try {
+    const { data } = await api.post(`/reservas/${id}/pagos`, datos, {
+      headers: headersConIdempotencia(),
+    })
+    return data
+  } finally {
+    resetIdempotencyKey()
+  }
+}
+
+export async function listarInvitados(reservaId) {
+  const { data } = await api.get(`/reservas/${reservaId}/invitados`)
+  return data
+}
+
+export async function resumenInvitados(reservaId) {
+  const { data } = await api.get(`/reservas/${reservaId}/invitados/resumen`)
+  return data
+}
+
+export async function agregarInvitado(reservaId, datos) {
+  const { data } = await api.post(`/reservas/${reservaId}/invitados`, datos)
+  return data
+}
+
+export async function eliminarInvitado(reservaId, invitadoId) {
+  await api.delete(`/reservas/${reservaId}/invitados/${invitadoId}`)
+}
+
+export async function caja(fecha) {
+  const { data } = await api.get('/sistema/caja', { params: { fecha } })
   return data
 }

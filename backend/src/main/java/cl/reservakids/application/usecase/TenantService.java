@@ -80,9 +80,32 @@ public class TenantService {
             tenant.setKhipuApiKey(credentialCipher.encrypt(req.khipuApiKey()));
             tenant.setKhipuReceiverId(req.khipuReceiverId());
         }
+        if (req.colorPrimario() != null && !req.colorPrimario().isBlank()) {
+            if (!req.colorPrimario().matches("#[0-9a-fA-F]{6}")) {
+                throw new IllegalArgumentException("El color primario debe ser hex (#rrggbb)");
+            }
+            tenant.setColorPrimario(req.colorPrimario());
+        }
+        if (req.tituloPagina() != null) {
+            tenant.setTituloPagina(req.tituloPagina().isBlank() ? null : req.tituloPagina().trim());
+        }
+        if (req.metaPixelId() != null) {
+            String pixel = req.metaPixelId().trim();
+            if (pixel.isBlank()) {
+                tenant.setMetaPixelId(null);
+            } else if (!pixel.matches("\\d+")) {
+                throw new IllegalArgumentException("El ID del Meta Pixel solo puede contener números");
+            } else {
+                tenant.setMetaPixelId(pixel);
+            }
+        }
+        if (req.politicasCancelacion() != null) {
+            tenant.setPoliticasCancelacion(req.politicasCancelacion().isBlank() ? null : req.politicasCancelacion().trim());
+        }
         audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
                 AuditEvent.CONFIGURACION_GUARDAR, "CONFIGURACION", null,
-                "Pasarela de pago configurada: " + req.pasarelaPago());
+                "Configuracion guardada: pasarela=" + req.pasarelaPago()
+                        + " color=" + tenant.getColorPrimario());
     }
 
     /**
