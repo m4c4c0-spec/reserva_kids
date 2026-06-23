@@ -1,0 +1,13 @@
+# Configuración de gitleaks (CI job "Seguridad").
+# Extiende las reglas por defecto y solo añade una allowlist acotada.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Bloques .env de EJEMPLO en documentación (no son secretos reales). El secreto real vive solo en .env, que está en .gitignore."
+# Acotado a docs de provisionamiento/despliegue que muestran plantillas de variables
+# (POSTGRES_PASSWORD=..., JWT_SECRET=...). El código y el resto del repo siguen escaneados.
+paths = [
+  '''docs/PROVISIONAMIENTO_AUTOMATICO\.md''',
+  '''docs/MANUAL_DESPLIEGUE\.md''',
+]
