@@ -22,6 +22,15 @@ class EstadoReservaTest {
     }
 
     @Test
+    void flujoCitaPorHora() {
+        Reserva reserva = new Reserva();
+        reserva.setEstado(PENDIENTE_PAGO);
+        reserva.transicionarA(CONFIRMADA); // el webhook de pago confirma
+        reserva.transicionarA(REALIZADA);
+        assertEquals(REALIZADA, reserva.getEstado());
+    }
+
+    @Test
     void puedeCancelarseDesdeCualquierEstadoActivo() {
         for (EstadoReserva activo : EstadoReserva.ACTIVOS) {
             assertTrue(activo.puedeTransicionarA(CANCELADA), activo + " debe poder cancelarse");

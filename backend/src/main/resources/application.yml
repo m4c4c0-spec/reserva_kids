@@ -1,6 +1,11 @@
 spring:
   application:
     name: reservakids-api
+  # Evitar ataques de denegación de servicio por payloads excesivos
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/reservakids}
     username: ${DB_USER:reservakids_app}
@@ -18,43 +23,118 @@ spring:
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
     properties:
-      mail.smtp.auth: true
-      mail.smtp.starttls.enable: true
+      # Proveedores reales (Brevo/Resend/Gmail) usan auth+STARTTLS (los defaults);
+      # el Mailpit de desarrollo no lleva auth (el compose pasa ambos en false).
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS:true}
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 server:
-  port: 8080
+  # Cloud Run / Render inyectan el puerto por env (PORT). Default 8080 para dev/compose.
+  port: ${PORT:8080}
+  # RNF-07 disponibilidad: graceful shutdown para no perder requests en vuelo al detener
+  shutdown: graceful
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain,text/css,application/javascript,text/javascript
+    min-response-size: 1024
   error:
     include-stacktrace: never
+    whitelabel:
+      enabled: false    # Página de error por defecto de Spring = filtración de info
 
-# Falla #8 (2 años): solo /actuator/health, sin detalles (es público para el healthcheck)
+# Falla #8 (2 años): /actuator/health (público, healthcheck) + observabilidad:
+# /actuator/prometheus (métricas) y export de trazas OTLP al Collector.
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus,metrics
+  health:
+    mail:
+      # Un SMTP caído NO debe marcar la API entera como unhealthy (y con MAIL_HOST
+      # vacío el indicador fallaba siempre). El canal de email ya tiene su propia
+      # señal: fallosConsecutivos → GET /api/sistema/notificaciones → aviso del panel.
+      enabled: false
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_RATE:0.1}
+  otlp:
+    tracing:
+      # Endpoint OTLP/HTTP del OpenTelemetry Collector. En Docker: http://otel-collector:4318/v1/traces
+      endpoint: ${OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    tags:
+      # Etiqueta todas las métricas con el servicio para separarlas en Prometheus/Grafana.
+      application: ${spring.application.name:reservakids-api}
 
 app:
   jwt:
     secret: ${JWT_SECRET:}
+    # H4: clave previa para rotación sin downtime. Al rotar JWT_SECRET, se pone el valor
+    # antiguo aquí: los access tokens vivos (≤15 min) siguen validándose hasta expirar.
+    # Vacía = sin rotación en curso (comportamiento normal). Quitar tras la ventana de rotación.
+    secret-previous: ${JWT_SECRET_PREVIOUS:}
     issuer: reservakids
     audience: reservakids-web
     access-minutes: ${JWT_ACCESS_MINUTES:15}
     refresh-days: ${JWT_REFRESH_DAYS:7}
+  admin:
+    # V18: bootstrap del primer administrador de plataforma. Si email+password están vacíos
+    # no se crea ningún admin (fail-safe). Setear una vez en demo/prod; idempotente.
+    bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
+    bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+    bootstrap-nombre: ${ADMIN_BOOTSTRAP_NOMBRE:Administrador}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  cookies:
+    # Refresh token en cookie HttpOnly. Secure=true exige HTTPS (prod); en dev (HTTP)
+    # debe ser false o el navegador descarta la cookie.
+    secure: ${COOKIE_SECURE:true}
+    # Lax mitiga CSRF cross-site en POST; Strict rompe links entrantes al área autenticada.
+    same-site: ${COOKIE_SAME_SITE:Lax}
   frontend:
     # Base de los enlaces que viajan por email (reset de contraseña, falla 1.3)
     url: ${FRONTEND_URL:http://localhost:5173}
+  api:
+    # B1: URL pública de ESTA API — base del notificationUrl del webhook de Mercado Pago.
+    # En producción DEBE ser pública (https://api.tudominio.cl); si queda en localhost,
+    # MP no alcanza el webhook y los pagos online nunca se auto-confirman.
+    url: ${API_URL:http://localhost:8080}
   mail:
     from: ${MAIL_FROM:no-reply@reservakids.cl}
   password-reset:
     # Falla 1.3 (5 años): vigencia del enlace de recuperación (un solo uso)
     minutos: ${RESET_PASSWORD_MINUTOS:30}
+  magic-link:
+    # V27: login sin contraseña (dueños adultos mayores). Vigencia corta y single-use.
+    minutos: ${MAGIC_LINK_MINUTOS:10}
   reservas:
     # Criterio de aceptación RF-05: el bloque queda EN_ESPERA por 48 h
     expiracion-horas: ${RESERVA_EXPIRACION_HORAS:48}
     # Falla #1 (2 años): una COTIZADA sin respuesta libera su bloque tras N días
     cotizacion-expiracion-dias: ${COTIZACION_EXPIRACION_DIAS:14}
+  citas:
+    # Cita por hora sin pagar: minutos que retiene la franja antes de liberarla
+    pago-expiracion-min: ${CITA_PAGO_EXPIRACION_MIN:30}
+  recordatorio:
+    # RNF-08: cuántas horas antes del evento se envía el recordatorio automático
+    horas-antes: ${RECORDATORIO_HORAS_ANTES:24}
+  whatsapp:
+    # Automatización 100% WhatsApp: stub=false loguea; true envía por Meta Cloud API.
+    # Requiere WHATSAPP_PHONE_ID y WHATSAPP_TOKEN del Meta Business Suite.
+    enabled: ${WHATSAPP_ENABLED:false}
+    phone-id: ${WHATSAPP_PHONE_ID:}
+    token: ${WHATSAPP_TOKEN:}
+  alertas:
+    # Alertas proactivas a Operaciones. Sin SLACK_WEBHOOK_URL se loguea como stub.
+    slack:
+      webhook-url: ${SLACK_WEBHOOK_URL:}
+    webhook:
+      # Fallos consecutivos del webhook de pagos antes de gatillar la alerta crítica.
+      umbral: ${ALERTAS_WEBHOOK_UMBRAL:3}
   clientes:
     # Falla #4 (2 años, Ley 21.719): retención de datos personales por inactividad
     retencion-meses: ${RETENCION_CLIENTE_MESES:24}
@@ -64,6 +144,52 @@ app:
     purga-dias-tras-cierre: ${TENANT_PURGA_DIAS:90}
   # El servidor corre en UTC; el negocio opera en hora chilena
   zona-horaria: ${APP_TIMEZONE:America/Santiago}
+  rate-limit:
+    # Límites por minuto por IP, según el patrón de la ruta. El webhook tiene el más estricto
+    # para mitigar flooding e IDOR contra la API de Mercado Pago. Los endpoints de auth tienen
+    # límites bajos para frustrar fuerza bruta.
+    public-max-por-minuto: ${RATE_LIMIT_PUBLIC:30}
+    auth-max-por-minuto: ${RATE_LIMIT_AUTH:10}
+    cliente-auth-max-por-minuto: ${RATE_LIMIT_CLIENTE_AUTH:10}
+    admin-auth-max-por-minuto: ${RATE_LIMIT_ADMIN_AUTH:5}
+    panel-max-por-minuto: ${RATE_LIMIT_PANEL:60}
+    webhook-max-por-minuto: ${RATE_LIMIT_WEBHOOK:5}
+  mercadopago:
+    # Anti-replay del webhook: una firma con timestamp más antiguo que este valor (minutos)
+    # se rechaza aunque el HMAC sea válido. Default 5; MP envía timestamps en segundos reales.
+    webhook-signature-max-age-minutes: ${MP_WEBHOOK_SIG_MAX_AGE_MINUTES:5}
+  khipu:
+    # V25: base de la API de Pagos Instantáneos de Khipu (no cambia entre dev/prod; las
+    # cuentas de cobro de desarrollo usan el mismo host). El notify_url de cada cobro se arma
+    # con app.api.url + /api/public/webhooks/khipu/{tenantId}.
+    api-base: ${KHIPU_API_BASE:https://api.khipu.com}
+    # Anti-replay del webhook de Khipu (timestamp en milisegundos).
+    webhook-signature-max-age-minutes: ${KHIPU_WEBHOOK_SIG_MAX_AGE_MINUTES:5}
   security:
     # Activar SOLO detrás de un reverse proxy (Caddy/nginx) que setee X-Forwarded-For
     trust-proxy: ${TRUST_PROXY:false}
+    # S1: clave AES-256 (base64 de 32 bytes) para cifrar credenciales de terceros (token MP,
+    # secreto del webhook) en reposo. Vacía = se deriva de JWT_SECRET (ok en dev).
+    # Generar una dedicada en producción: openssl rand -base64 32
+    cred-key: ${CRED_ENC_KEY:}
+    # RNF-02: rounds de bcrypt. OWASP 2023+ recomienda 12; en hardware más lento se puede bajar.
+    bcrypt-strength: ${BCRYPT_STRENGTH:12}
+  oauth2:
+    google:
+      client-id: ${OAUTH2_GOOGLE_CLIENT_ID:}
+      client-secret: ${OAUTH2_GOOGLE_CLIENT_SECRET:}
+    microsoft:
+      client-id: ${OAUTH2_MICROSOFT_CLIENT_ID:}
+      client-secret: ${OAUTH2_MICROSOFT_CLIENT_SECRET:}
+    apple:
+      client-id: ${OAUTH2_APPLE_CLIENT_ID:}
+      team-id: ${OAUTH2_APPLE_TEAM_ID:}
+      key-id: ${OAUTH2_APPLE_KEY_ID:}
+      private-key: ${OAUTH2_APPLE_PRIVATE_KEY:}
+  single-tenant:
+    # Provisión automática de un Tenant exclusivo al iniciar el contenedor (BD vacía)
+    enabled: ${RESERVAKIDS_SINGLE_TENANT_ENABLED:false}
+    slug: ${RESERVAKIDS_SINGLE_TENANT_SLUG:}
+    nombre: ${RESERVAKIDS_SINGLE_TENANT_NOMBRE:}
+    admin-email: ${RESERVAKIDS_SINGLE_TENANT_ADMIN_EMAIL:}
+    admin-password: ${RESERVAKIDS_SINGLE_TENANT_ADMIN_PASSWORD:}

@@ -43,11 +43,28 @@ public class Reserva {
     @Column(name = "cliente_id", nullable = false)
     private Long clienteId;
 
-    @Column(name = "servicio_id", nullable = false)
+    /** Cuenta de cliente (apoderado) que agendó la cita por hora. Null en el flujo de cumpleaños. */
+    @Column(name = "cuenta_cliente_id")
+    private Long cuentaClienteId;
+
+    /** Flujo cumpleaños: servicio único. Null en citas por hora (usan reserva_servicio). */
+    @Column(name = "servicio_id")
     private Long servicioId;
 
-    @Column(name = "bloque_id", nullable = false)
+    /** Flujo cumpleaños: bloque pre-creado. Null en citas por hora (usan inicio/fin). */
+    @Column(name = "bloque_id")
     private Long bloqueId;
+
+    /** Cita por hora: inicio/fin de la franja (duración = suma de los servicios). */
+    @Column(name = "inicio")
+    private OffsetDateTime inicio;
+
+    @Column(name = "fin")
+    private OffsetDateTime fin;
+
+    /** ID del evento en Google Calendar asociado. Null si no se ha sincronizado. */
+    @Column(name = "google_event_id", length = 255)
+    private String googleEventId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -72,6 +89,16 @@ public class Reserva {
     /** Cuándo el dueño envió la cotización — base de la expiración de COTIZADA sin respuesta. */
     @Column(name = "cotizada_en")
     private OffsetDateTime cotizadaEn;
+
+    @Column(name = "mp_preference_id")
+    private String mpPreferenceId;
+
+    @Column(name = "mp_init_point")
+    private String mpInitPoint;
+
+    /** V29: momento en que el cliente aceptó las políticas de cancelación (escudo legal). */
+    @Column(name = "politicas_aceptadas_en")
+    private OffsetDateTime politicasAceptadasEn;
 
     /** Regla de dominio: solo transiciones válidas de la máquina de estados (§4.3). */
     public void transicionarA(EstadoReserva destino) {

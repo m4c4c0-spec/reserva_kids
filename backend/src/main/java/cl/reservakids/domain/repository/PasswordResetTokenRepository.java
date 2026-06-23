@@ -15,10 +15,25 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
 
     Optional<PasswordResetToken> findByTokenHash(String tokenHash);
 
+    /** V27: lookup filtrando por tipo, para que un magic link no sirva como reset y viceversa. */
+    Optional<PasswordResetToken> findByTokenHashAndTipo(String tokenHash, String tipo);
+
     /** Pedir un reset nuevo invalida los anteriores: solo el último enlace sirve. */
     @Modifying
     @Query("UPDATE PasswordResetToken t SET t.usado = true WHERE t.usuarioId = :usuarioId AND t.usado = false")
     int invalidarVigentesDeUsuario(@Param("usuarioId") Long usuarioId);
+
+    /** V27: invalida solo los de un tipo (no invalida el reset al pedir magic link ni al revés). */
+    @Modifying
+    @Query("UPDATE PasswordResetToken t SET t.usado = true "
+            + "WHERE t.usuarioId = :usuarioId AND t.usado = false AND t.tipo = :tipo")
+    int invalidarVigentesDeUsuarioAndTipo(@Param("usuarioId") Long usuarioId,
+                                          @Param("tipo") String tipo);
+
+    /** Invalida tokens vigentes de una cuenta de cliente (apoderado). */
+    @Modifying
+    @Query("UPDATE PasswordResetToken t SET t.usado = true WHERE t.cuentaClienteId = :cuentaId AND t.usado = false")
+    int invalidarVigentesDeCuentaCliente(@Param("cuentaId") Long cuentaId);
 
     /** Mantenimiento diario (mismo job que los refresh): la tabla no crece sin límite. */
     @Modifying

@@ -29,5 +29,23 @@ public final class AuthDtos {
             @NotBlank String token,
             @NotBlank @Size(min = 8, max = 72) String nuevaPassword) {}
 
+    /** V27: magic link de login sin contraseña. */
+    public record MagicSolicitudRequest(@NotBlank @Email String email) {}
+
+    public record MagicEntradaRequest(@NotBlank String token) {}
+
     public record TokenResponse(String accessToken, String refreshToken, String slug, String nombreNegocio) {}
+
+    public record OAuth2Request(@NotBlank String code, @NotBlank String redirectUri, String state) {}
+
+    /** URL de autorización que el frontend debe abrir para que el proveedor redirija de vuelta. */
+    public record OAuth2AuthorizeResponse(String authorizeUrl) {}
+
+    /** Login por OAuth2: código del proveedor + redirectUri + state (CSRF). nombreNegocio y slug solo para registro nuevo de dueño. */
+    public record OAuth2LoginRequest(
+            @NotBlank String code,
+            @NotBlank String redirectUri,
+            @Size(max = 120) String nombreNegocio,
+            @Pattern(regexp = "[a-z0-9-]{3,60}") String slug,
+            String state) {}
 }
