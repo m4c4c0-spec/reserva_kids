@@ -61,8 +61,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Escaneo de dependencias y secretos (Trivy)
-        # 0.28.0 no existe como tag → fallaba al resolver la acción. Pin a una versión real.
-        uses: aquasecurity/trivy-action@0.30.0
+        # Los tags publicados llevan prefijo 'v' (0.28.0 / 0.30.0 sin 'v' no existen).
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: fs
           scanners: vuln,secret
