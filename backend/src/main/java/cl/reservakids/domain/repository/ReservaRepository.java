@@ -20,6 +20,34 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     Page<Reserva> findByTenantIdAndEstadoOrderByCreadaEnDesc(Long tenantId, EstadoReserva estado, Pageable pageable);
     Optional<Reserva> findByIdAndTenantId(Long id, Long tenantId);
 
+    /**
+     * Búsqueda del panel del dueño: coincide por #reserva exacto (cuando el término es
+     * numérico, {@code reservaId}) o por nombre de cliente (subconsulta sobre Cliente,
+     * tenant-scoped). El patrón se arma en Java (LIKE directo, sin CONCAT) para que el
+     * bind se tipe como texto y no como bytea con términos vacíos. Mismo orden que el
+     * listado normal; los totales/clientes se cargan después (anti-N+1 en el servicio).
+     */
+    @Query("""
+            SELECT r FROM Reserva r
+            WHERE r.tenantId = :tenantId
+              AND (r.id = :reservaId
+                   OR r.clienteId IN (SELECT c.id FROM Cliente c
+                                      WHERE c.tenantId = :tenantId AND LOWER(c.nombre) LIKE :patron))
+            ORDER BY r.creadaEn DESC""")
+    Page<Reserva> buscar(@Param("tenantId") Long tenantId, @Param("reservaId") Long reservaId,
+                         @Param("patron") String patron, Pageable pageable);
+
+    @Query("""
+            SELECT r FROM Reserva r
+            WHERE r.tenantId = :tenantId AND r.estado = :estado
+              AND (r.id = :reservaId
+                   OR r.clienteId IN (SELECT c.id FROM Cliente c
+                                      WHERE c.tenantId = :tenantId AND LOWER(c.nombre) LIKE :patron))
+            ORDER BY r.creadaEn DESC""")
+    Page<Reserva> buscarPorEstado(@Param("tenantId") Long tenantId, @Param("estado") EstadoReserva estado,
+                                  @Param("reservaId") Long reservaId, @Param("patron") String patron,
+                                  Pageable pageable);
+
     /** Consola de admin (F2): nº de reservas de un negocio (detalle de un tenant). */
     long countByTenantId(Long tenantId);
 
