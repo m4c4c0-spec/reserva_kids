@@ -1,8 +1,9 @@
 import api from '../api/client'
 
-export async function listar(estado, page = 0, size = 20) {
+export async function listar(estado, page = 0, size = 20, q = '') {
   const params = { page, size }
   if (estado) params.estado = estado
+  if (q && q.trim()) params.q = q.trim()
   const { data } = await api.get('/reservas', { params })
   return data
 }
