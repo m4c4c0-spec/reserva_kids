@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import api from '../api/client'
 import * as reservaService from '../services/reservaService'
 import { clp } from '../composables/useCurrency'
@@ -7,6 +7,7 @@ import { useAsync } from '../composables/useAsync'
 import BaseButton from '../components/BaseButton.vue'
 import BaseModal from '../components/BaseModal.vue'
 import BasePagination from '../components/BasePagination.vue'
+import BaseToast from '../components/BaseToast.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
 import LoadingSpinner from '../components/LoadingSpinner.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -15,6 +16,7 @@ import OnboardingBanner from '../components/OnboardingBanner.vue'
 
 const reservas = ref([])
 const filtro = ref('')
+const busqueda = ref('')
 const paginaActual = ref(0)
 const totalPaginas = ref(0)
 const cotizando = ref(null)
@@ -34,14 +36,67 @@ const {
   error: errorCarga,
   ejecutar: cargar,
 } = useAsync(async () => {
-  const data = await reservaService.listar(filtro.value, paginaActual.value)
+  const data = await reservaService.listar(filtro.value, paginaActual.value, 20, busqueda.value)
   reservas.value = data.content
   totalPaginas.value = data.totalPages
 })
 
-const { error: errorAccion, ejecutar: ejecutarAccion } = useAsync(async (fn) => {
-  await fn()
-  await cargar()
+// Búsqueda por nombre de cliente o #reserva, con debounce para no pegarle al backend en cada tecla.
+let debounceBusqueda = null
+function onBuscar() {
+  clearTimeout(debounceBusqueda)
+  debounceBusqueda = setTimeout(() => {
+    paginaActual.value = 0
+    cargar()
+  }, 350)
+}
+
+// Acciones del panel: cada una marca su clave en `accionEnCurso` (spinner por
+// botón), propaga el mensaje específico del backend a `errorAccion` y dispara un
+// toast de éxito. Reemplaza al wrapper genérico de useAsync para poder distinguir
+// QUÉ acción está en vuelo y dar feedback por acción.
+const errorAccion = ref(null)
+const accionEnCurso = ref(null)
+const toast = ref({ mensaje: '', tipo: 'exito' })
+// Confirmación obligatoria para transiciones difíciles de deshacer.
+const confirmacion = ref(null) // { tipo: 'confirmar' | 'realizar', reserva }
+
+const enCurso = (clave) => accionEnCurso.value === clave
+
+function notificar(mensaje, tipo = 'exito') {
+  // Reset previo para re-disparar el watch del toast aunque el mensaje se repita.
+  toast.value = { mensaje: '', tipo }
+  nextTick(() => (toast.value = { mensaje, tipo }))
+}
+
+async function correr(clave, fn, exitoMsg) {
+  errorAccion.value = null
+  accionEnCurso.value = clave
+  try {
+    await fn()
+    await cargar()
+    if (exitoMsg) notificar(exitoMsg)
+  } catch (e) {
+    errorAccion.value = e.response?.data?.message || 'No se pudo completar la acción.'
+  } finally {
+    accionEnCurso.value = null
+  }
+}
+
+const confirmTexto = computed(() => {
+  const c = confirmacion.value
+  if (!c) return { titulo: '', cuerpo: '', boton: '' }
+  return c.tipo === 'confirmar'
+    ? {
+        titulo: 'Confirmar reserva',
+        cuerpo: `Vas a confirmar la solicitud #${c.reserva.id}. El horario quedará reservado para este cliente y nadie más podrá tomarlo.`,
+        boton: 'Sí, confirmar',
+      }
+    : {
+        titulo: 'Marcar como realizada',
+        cuerpo: `Vas a marcar la solicitud #${c.reserva.id} como realizada. Esto cierra la reserva y no se puede deshacer.`,
+        boton: 'Sí, marcar realizada',
+      }
 })
 
 function cambiarPagina(p) {
@@ -54,19 +109,46 @@ function reiniciarPagina() {
   cargar()
 }
 
+// La seña nunca puede superar el total (el backend también lo valida, pero avisamos antes).
+const seniaInvalida = computed(
+  () =>
+    cotizacion.value.totalClp != null &&
+    cotizacion.value.seniaClp != null &&
+    cotizacion.value.seniaClp > cotizacion.value.totalClp,
+)
+
 async function cotizar(r) {
-  await ejecutarAccion(async () => {
-    await reservaService.cotizar(r.id, cotizacion.value)
-    cotizando.value = null
-  })
+  if (seniaInvalida.value) {
+    errorAccion.value = 'La seña no puede ser mayor que el total.'
+    return
+  }
+  await correr(
+    `cotizar-${r.id}`,
+    async () => {
+      await reservaService.cotizar(r.id, cotizacion.value)
+      cotizando.value = null
+    },
+    'Cotización enviada al cliente.',
+  )
 }
 
-async function confirmarReserva(r) {
-  await ejecutarAccion(() => reservaService.confirmar(r.id))
+function pedirConfirmacion(tipo, reserva) {
+  confirmacion.value = { tipo, reserva }
 }
 
-async function realizar(r) {
-  await ejecutarAccion(() => reservaService.realizar(r.id))
+async function ejecutarConfirmacion() {
+  const c = confirmacion.value
+  if (!c) return
+  confirmacion.value = null
+  if (c.tipo === 'confirmar') {
+    await correr(`confirmar-${c.reserva.id}`, () => reservaService.confirmar(c.reserva.id), 'Reserva confirmada.')
+  } else {
+    await correr(
+      `realizar-${c.reserva.id}`,
+      () => reservaService.realizar(c.reserva.id),
+      'Reserva marcada como realizada.',
+    )
+  }
 }
 
 function abrirCancelacion(r) {
@@ -75,18 +157,27 @@ function abrirCancelacion(r) {
 }
 
 async function confirmarCancelacion() {
-  await ejecutarAccion(async () => {
-    await reservaService.cancelar(cancelandoId.value, motivoCancelacion.value)
-    cancelandoId.value = null
-  })
+  const id = cancelandoId.value
+  await correr(
+    `cancelar-${id}`,
+    async () => {
+      await reservaService.cancelar(id, motivoCancelacion.value)
+      cancelandoId.value = null
+    },
+    'Reserva cancelada.',
+  )
 }
 
 async function registrarPago(r) {
-  await ejecutarAccion(async () => {
-    await reservaService.registrarPago(r.id, pago.value)
-    pagando.value = null
-    pago.value = { montoClp: null, medio: 'TRANSFERENCIA', comprobanteUrl: '' }
-  })
+  await correr(
+    `pago-${r.id}`,
+    async () => {
+      await reservaService.registrarPago(r.id, pago.value)
+      pagando.value = null
+      pago.value = { montoClp: null, medio: 'TRANSFERENCIA', comprobanteUrl: '' }
+    },
+    'Pago registrado.',
+  )
 }
 
 async function cargarMetricas() {
@@ -115,14 +206,30 @@ onMounted(() => {
         <h2 class="font-display font-bold text-2xl md:text-3xl text-on-surface">Solicitudes</h2>
         <p class="font-medium text-on-surface-variant text-sm mt-0.5">Gestiona las reservas de tus clientes.</p>
       </div>
-      <select
-        v-model="filtro"
-        aria-label="Filtrar solicitudes por estado"
-        class="bg-surface-high rounded-full px-4 py-2 text-sm font-bold text-on-surface border-none focus:outline-none focus:ring-2 focus:ring-primary-container cursor-pointer"
-        @change="reiniciarPagina"
-      >
-        <option v-for="e in ESTADOS" :key="e" :value="e">{{ e || 'Todas' }}</option>
-      </select>
+      <div class="flex items-center gap-2 w-full sm:w-auto">
+        <div class="relative flex-1 sm:flex-initial">
+          <span
+            class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]"
+            >search</span
+          >
+          <input
+            v-model="busqueda"
+            type="search"
+            placeholder="Buscar cliente o #reserva…"
+            aria-label="Buscar por nombre de cliente o número de reserva"
+            class="bg-surface-high rounded-full pl-10 pr-4 py-2 text-sm font-medium text-on-surface border-none focus:outline-none focus:ring-2 focus:ring-primary-container w-full sm:w-56"
+            @input="onBuscar"
+          />
+        </div>
+        <select
+          v-model="filtro"
+          aria-label="Filtrar solicitudes por estado"
+          class="bg-surface-high rounded-full px-4 py-2 text-sm font-bold text-on-surface border-none focus:outline-none focus:ring-2 focus:ring-primary-container cursor-pointer"
+          @change="reiniciarPagina"
+        >
+          <option v-for="e in ESTADOS" :key="e" :value="e">{{ e || 'Todas' }}</option>
+        </select>
+      </div>
     </div>
 
     <!-- KPIs / Metrics -->
@@ -187,7 +294,11 @@ onMounted(() => {
           <strong class="text-primary">Saldo {{ clp(r.saldoClp) }}</strong>
         </p>
 
-        <form v-if="cotizando === r.id" class="flex flex-wrap gap-2 items-end" @submit.prevent="cotizar(r)">
+        <form
+          v-if="cotizando === r.id"
+          class="flex flex-wrap gap-2 items-end bg-primary-container/15 border border-primary-container rounded-2xl p-3"
+          @submit.prevent="cotizar(r)"
+        >
           <input
             v-model.number="cotizacion.totalClp"
             type="number"
@@ -206,10 +317,19 @@ onMounted(() => {
             aria-label="Seña en pesos chilenos"
             class="input-festivo !w-32"
           />
-          <BaseButton variante="primario">Enviar cotización</BaseButton>
+          <BaseButton variante="primario" :cargando="enCurso(`cotizar-${r.id}`)" :deshabilitado="seniaInvalida"
+            >Enviar cotización</BaseButton
+          >
+          <p v-if="seniaInvalida" class="w-full text-xs font-semibold text-error">
+            La seña no puede ser mayor que el total.
+          </p>
         </form>
 
-        <form v-if="pagando === r.id" class="flex flex-wrap gap-2 items-end" @submit.prevent="registrarPago(r)">
+        <form
+          v-if="pagando === r.id"
+          class="flex flex-wrap gap-2 items-end bg-secondary-container/15 border border-secondary-container rounded-2xl p-3"
+          @submit.prevent="registrarPago(r)"
+        >
           <input
             v-model.number="pago.montoClp"
             type="number"
@@ -230,7 +350,7 @@ onMounted(() => {
             aria-label="URL del comprobante de pago"
             class="input-festivo !flex-1 !min-w-40"
           />
-          <BaseButton variante="secundario">Registrar seña</BaseButton>
+          <BaseButton variante="secundario" :cargando="enCurso(`pago-${r.id}`)">Registrar seña</BaseButton>
         </form>
 
         <div class="flex flex-wrap gap-2 pt-1 text-sm">
@@ -262,8 +382,18 @@ onMounted(() => {
           >
             Registrar pago
           </button>
-          <BaseButton v-if="r.estado === 'COTIZADA'" @click="confirmarReserva(r)">Confirmar</BaseButton>
-          <BaseButton v-if="r.estado === 'CONFIRMADA'" @click="realizar(r)">Marcar realizada</BaseButton>
+          <BaseButton
+            v-if="r.estado === 'COTIZADA'"
+            :cargando="enCurso(`confirmar-${r.id}`)"
+            @click="pedirConfirmacion('confirmar', r)"
+            >Confirmar</BaseButton
+          >
+          <BaseButton
+            v-if="r.estado === 'CONFIRMADA'"
+            :cargando="enCurso(`realizar-${r.id}`)"
+            @click="pedirConfirmacion('realizar', r)"
+            >Marcar realizada</BaseButton
+          >
           <button
             v-if="['PENDIENTE', 'COTIZADA', 'CONFIRMADA'].includes(r.estado)"
             class="text-error font-bold px-2 hover:underline"
@@ -275,7 +405,11 @@ onMounted(() => {
       </li>
     </ul>
 
-    <EmptyState v-if="!cargando && !reservas.length" mensaje="No hay solicitudes." icono="inbox" />
+    <EmptyState
+      v-if="!cargando && !reservas.length"
+      :mensaje="busqueda ? 'Ningún resultado para tu búsqueda.' : 'No hay solicitudes.'"
+      icono="inbox"
+    />
 
     <BasePagination :pagina-actual="paginaActual" :total-paginas="totalPaginas" @cambiar-pagina="cambiarPagina" />
 
@@ -294,5 +428,32 @@ onMounted(() => {
         class="input-festivo"
       />
     </BaseModal>
+
+    <!-- Confirmación de transiciones difíciles de deshacer (Confirmar / Realizar). -->
+    <BaseModal
+      :visible="!!confirmacion"
+      :titulo="confirmTexto.titulo"
+      @cerrar="confirmacion = null"
+      @cancelar="confirmacion = null"
+      @confirmar="ejecutarConfirmacion"
+    >
+      <p class="text-sm font-medium text-on-surface-variant">{{ confirmTexto.cuerpo }}</p>
+      <template #acciones>
+        <button
+          class="px-4 py-2 rounded-full font-bold text-sm border-2 border-outline-variant text-on-surface-variant hover:bg-surface-container transition-colors"
+          @click="confirmacion = null"
+        >
+          Cancelar
+        </button>
+        <button
+          class="px-4 py-2 rounded-full font-bold text-sm bg-primary-container text-on-primary-container hover:bg-primary-fixed shadow-md transition-all active:scale-95"
+          @click="ejecutarConfirmacion"
+        >
+          {{ confirmTexto.boton }}
+        </button>
+      </template>
+    </BaseModal>
+
+    <BaseToast :mensaje="toast.mensaje" :tipo="toast.tipo" @cerrar="toast.mensaje = ''" />
   </section>
 </template>

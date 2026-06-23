@@ -99,6 +99,9 @@ const tiers = [
             aria-hidden="true"
           />
         </div>
+        <p class="font-display font-bold text-sm md:text-base tracking-widest uppercase text-outline mb-1">
+          ReservaKids
+        </p>
         <h1 class="font-display font-extrabold text-3xl md:text-5xl tracking-tight text-primary leading-tight">
           Reservas para cumpleaños infantiles
         </h1>
@@ -152,7 +155,7 @@ const tiers = [
              Lo hacemos explícito para no empujar a todos al muro de login. -->
         <p class="text-sm font-medium text-on-surface-variant mt-5 flex items-center justify-center gap-1.5">
           <span class="material-symbols-outlined text-[18px] text-outline">link</span>
-          ¿El negocio te pasó un link? Ábrelo directamente para reservar sin crear cuenta.
+          ¿El negocio te pasó un link? Ábrelo para ver su catálogo sin registrarte.
         </p>
       </div>
     </section>
