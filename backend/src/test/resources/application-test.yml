@@ -2,7 +2,16 @@
 # Spring Boot reescribe la URL de datasource con la del contenedor Postgres levantado dinámicamente.
 spring:
   datasource:
-    url: jdbc:tc:postgresql:16-alpine:///reservakids
+    # TC_DAEMON=true mantiene el contenedor Postgres vivo durante toda la JVM. Sin esto,
+    # cuando el pool cierra su última conexión (entre tests o bajo churn de concurrencia)
+    # Testcontainers APAGA el contenedor → "Connection refused" al reabrir (causa real del
+    # rojo de los IT de concurrencia en CI).
+    url: jdbc:tc:postgresql:16-alpine:///reservakids?TC_DAEMON=true
+    hikari:
+      # ReservaConcurrenciaIT lanza 10 hilos simultáneos; con el pool por defecto (10) y
+      # sin margen, se agota y los hilos caen por timeout (30 s) en vez de por el 409 esperado.
+      maximum-pool-size: 20
+      connection-timeout: 20000
   jpa:
     hibernate:
       ddl-auto: validate
