@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import api from '../api/client'
 
 const auth = useAuthStore()
 const router = useRouter()
