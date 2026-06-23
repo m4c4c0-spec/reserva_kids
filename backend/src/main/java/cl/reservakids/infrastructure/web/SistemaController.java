@@ -6,6 +6,7 @@ import cl.reservakids.application.usecase.MetricsService;
 import cl.reservakids.domain.model.AuditEvent;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.AuditEventRepository;
+import cl.reservakids.domain.repository.HorarioAtencionRepository;
 import cl.reservakids.domain.repository.ServicioRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.infrastructure.adapter.NotificacionAdapter;
@@ -36,24 +37,28 @@ public class SistemaController {
     private final MetricsService metricsService;
     private final TenantRepository tenantRepository;
     private final ServicioRepository servicioRepository;
+    private final HorarioAtencionRepository horarioAtencionRepository;
 
     /**
      * V27: estado del onboarding del dueño. El panel lo consulta al entrar y, si faltan pasos,
      * muestra un globo gigante "¡Bienvenido! Hagamos 2 cosas para empezar a vender" con botones
      * que llevan directo a crear el primer servicio y a configurar la pasarela de pago.
-     * Sirve también de "lista de verificación" siempre visible hasta completar todo.
+     * Sirve también de "lista de verificación" siempre visible hasta completar cada paso.
      */
     @GetMapping("/onboarding")
     public Map<String, Object> onboarding(@AuthenticationPrincipal AuthPrincipal principal) {
         Tenant tenant = tenantRepository.findById(principal.tenantId()).orElseThrow();
         long serviciosActivos = servicioRepository.findByTenantIdAndActivoTrueOrderByNombre(tenant.getId()).size();
+        // Sin franjas de atención no hay horas reservables → es un paso bloqueante del onboarding.
+        boolean horariosConfigurados = horarioAtencionRepository.existsByTenantId(tenant.getId());
         // "Configuraste la pasarela" = algo concreto para empezar a recibir señas online.
         boolean pasarelaConfigurada = tenant.tienePasarelaConfigurada();
         boolean contactoConfigurado = tenant.getTelefonoContacto() != null
                 && !tenant.getTelefonoContacto().isBlank();
-        boolean completo = serviciosActivos > 0 && pasarelaConfigurada;
+        boolean completo = serviciosActivos > 0 && horariosConfigurados && pasarelaConfigurada;
         return Map.of(
                 "servicios", serviciosActivos,
+                "horariosConfigurados", horariosConfigurados,
                 "pasarelaConfigurada", pasarelaConfigurada,
                 "contactoConfigurado", contactoConfigurado,
                 "completo", completo);

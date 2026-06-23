@@ -15,4 +15,7 @@ public interface HorarioAtencionRepository extends JpaRepository<HorarioAtencion
 
     /** Reemplazo completo del horario semanal. */
     void deleteByTenantId(Long tenantId);
+
+    /** ¿El negocio ya definió al menos una franja de atención? (estado de onboarding). */
+    boolean existsByTenantId(Long tenantId);
 }
