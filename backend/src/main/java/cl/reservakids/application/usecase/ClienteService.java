@@ -1,6 +1,7 @@
 package cl.reservakids.application.usecase;
 
 import cl.reservakids.domain.exception.RecursoNoEncontradoException;
+import cl.reservakids.domain.model.AuditEvent;
 import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.EstadoReserva;
 import cl.reservakids.domain.model.Reserva;
@@ -19,7 +20,7 @@ import java.time.OffsetDateTime;
  * Cuando un apoderado pide "bórrenme de su base", el dueño lo ejecuta desde el panel:
  * la fila se conserva (las reservas históricas la referencian) pero deja de contener
  * datos personales. Complementa la anonimización automática por inactividad
- * de {@link ExpiracionService#anonimizarInactivos()}.
+ * de {@link ClienteRetencionJobs#anonimizarInactivos()}.
  */
 @Slf4j
 @Service
@@ -28,10 +29,11 @@ public class ClienteService {
 
     private final ClienteRepository clienteRepository;
     private final ReservaRepository reservaRepository;
+    private final AuditPort audit;
     private final Clock clock;
 
     @Transactional
-    public void anonimizar(Long tenantId, Long clienteId) {
+    public void anonimizar(Long tenantId, Long usuarioId, Long clienteId) {
         Cliente cliente = clienteRepository.findByIdAndTenantId(clienteId, tenantId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cliente no encontrado"));
         if (cliente.isAnonimizado()) {
@@ -46,6 +48,9 @@ public class ClienteService {
         // cancelación conservaban datos personales — la supresión quedaba a medias.
         int limpiadas = reservaRepository.anonimizarComentariosDeCliente(
                 clienteId, Reserva.COMENTARIOS_ANONIMIZADOS);
+        audit.registrar(tenantId, usuarioId, AuditEvent.ACTOR_DUENO,
+                "CLIENTE_ANONIMIZAR", "CLIENTE", clienteId,
+                "Ley 21.719: supresión a demanda; " + limpiadas + " comentarios limpiados");
         log.info("Ley 21.719: cliente #{} anonimizado a solicitud del titular (tenant {}); "
                 + "comentarios limpiados en {} reservas", clienteId, tenantId, limpiadas);
     }

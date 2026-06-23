@@ -1,0 +1,35 @@
+reservakids.cl {
+    encode gzip
+
+    header {
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://www.facebook.com; connect-src 'self' https://*.mercadopago.cl https://*.mercadopago.com https://www.facebook.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.mercadopago.com"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    }
+
+    handle /api/* {
+        reverse_proxy localhost:8080
+    }
+    handle /actuator/health {
+        reverse_proxy localhost:8080
+    }
+
+    # ── Micro-Frontends (Nuxt 3 SSR): ruteo por path a dos procesos independientes ──
+    # Panel del Dueño, admin, área de cliente, staff y auth → proceso en :3001
+    @panel path /panel /panel/* /admin /admin/* /clientes /clientes/* /staff /staff/* /login /login/* /reset /reset/* /magic /magic/* /oauth2 /oauth2/*
+    handle @panel {
+        reverse_proxy localhost:3001
+    }
+
+    # App pública (/, /:slug, /invitacion, /negocios, /privacidad, assets) → :3000
+    handle {
+        reverse_proxy localhost:3000
+    }
+}
+
+www.reservakids.cl {
+    redir https://reservakids.cl{uri} permanent
+}

@@ -321,3 +321,528 @@ por SSH). Iterado contra las demás fallas, reusando maquinaria ya probada:
 - `mvn test`: **BUILD SUCCESS — 49/49** (+5 de reset en `AuthServiceTest`, purgas verificadas).
 - Cadena V1–V7 ensayada completa contra `postgres:16-alpine`.
 - `npm run build`: OK (~55.7 kB gzip).
+
+### Paso 33b — Primer commit del repositorio
+
+Tras cerrar las fallas de código de la revisión a 5 años, el MVP completo (Sesiones 1–6 +
+fallas 3.3/3.2/1.3) se versionó por primera vez en git:
+
+- `3395599` **Commit inicial: ReservaKids Digital — MVP completo**
+- `7a6e3fc` Falla 1.3 (recuperación de contraseña por email)
+- `93401d7` Docs: marcar 1.3 implementada en la revisión a 5 años y README
+
+---
+
+## 2026-06-18 — Sesión 7: Pasarela de pago, cuentas de apoderado y pivote a citas por hora
+
+> Cambio de rumbo del producto: de "reservas de cumpleaños por bloques" a **agendamiento de
+> citas por hora multi-servicio** con pago en línea. Migraciones **V8–V14**.
+
+### Paso 34 — Integración de Mercado Pago (pasarela de pago)
+
+- `V8__integracion_mercadopago.sql` + `V10__cifrar_credenciales_mercadopago.sql`: credenciales
+  del tenant **cifradas en reposo** (no se guardan en claro), patrón coherente con el SHA-256
+  de los refresh tokens.
+- Adaptador de pago saliente (puerto `PasarelaPagoPort`); creación de preferencia de pago y
+  recepción de confirmación por **webhook**.
+- `375210d` fix(email): **Mailpit** como buzón SMTP en desarrollo, configuración de
+  SMTP/claves y endurecimiento para **no filtrar errores entre tenants**.
+- Commits: `5215288` (pagos + cifrado), `375210d` (email/dev).
+
+### Paso 35 — Cuentas de apoderado (cliente con login propio)
+
+- `V11__cuenta_cliente.sql` + `V12__telefono_cuenta_cliente.sql`: el apoderado deja de ser un
+  registro pasivo y pasa a tener **cuenta con login propio**, separada del usuario-negocio.
+- Directorio público de negocios; registro con teléfono y pantalla de bienvenida.
+- `V9__normalizar_emails_usuario.sql`: normalización de emails para login consistente.
+- Commits: `65ee6d0` (cuentas de apoderado + directorio), `8b4290c` (registro con teléfono).
+
+### Paso 36 — Rediseño Festive (UI) y reescritura del frontend
+
+- `f6d2280` feat(ui): **rediseño Festive** del login (fondo V2), vista de configuración del
+  negocio y wiring del frontend con los nuevos endpoints.
+- `6f38887` docs: revisión de arquitectura a 5 años, manual de despliegue y README actualizados.
+
+### Paso 37 — Pivote a agendamiento por hora con pago (Fase 4)
+
+| Pieza | Detalle |
+|---|---|
+| `V13__horario_atencion.sql` | Disponibilidad calculada a partir del **horario de atención** del negocio, en lugar de bloques precreados |
+| `V14__cita_por_hora.sql` | Modelo de **cita por hora** con estado `PENDIENTE_PAGO` |
+| Wizard de cliente | Elegir servicio(s) → día → hora |
+| Agendar con pago | Crea la cita, redirige a Mercado Pago y **confirma por webhook** |
+
+- Commits: `9b43be7`, `c28a5d8` (horario + wizard), `72919d3` (modelo de cita), `26bd98c`
+  (agendar con pago + webhook).
+- **Merges (gitflow):** `feature/agendamiento-pago-webhook` → `produccion` (`81651af`) →
+  `main` (`4dc14cc`).
+
+---
+
+## 2026-06-19 — Sesión 8: Notificación de cita, concurrencia y endurecimiento
+
+> Migraciones **V15–V16**. Refactor de jobs y de frontend; subida de Spring Boot.
+
+### Paso 38 — Notificación de cita y concurrencia
+
+| Pieza | Detalle / falla que cubre |
+|---|---|
+| `a934956` Notificación de cita | Confirmación al apoderado por **WhatsApp y correo** (AFTER_COMMIT) |
+| `V15__cita_concurrencia.sql` (`5e8a5f9`) | Anti doble-reserva a nivel de cita con **advisory lock** de Postgres (segunda barrera RNF-05 trasladada al nuevo modelo) |
+| `V16__refresh_token_cliente.sql` (`b0f08f2`) | **Refresh token con rotación** para las cuentas de apoderado (mismo modelo que el usuario-negocio) |
+| `03e1093` Horario de atención | API de horario + seed por defecto |
+
+### Paso 39 — Refactors y seguridad
+
+- `4246519` refactor(jobs): separar `ExpiracionService` en **`CicloReservaJobs`** y
+  **`MantenimientoJobs`** (preámbulo de la descomposición posterior por acoplamiento).
+- `984e53c` + `2c9745a` refactor(frontend): componentes base, services y composables; migración
+  de las vistas restantes.
+- `dd50ab4` feat(security): **refresh token en cookie HttpOnly** (SameSite=Lax), saca el token
+  del alcance de JS.
+- `d56cb65` chore(deps): **Spring Boot 3.5.6**.
+- `bc86449` feat(legal): página de **política de privacidad**.
+- `4e71300` test(integracion): tests de integración con **Testcontainers**.
+
+### Paso 40 — Merges (gitflow)
+
+- `feature/notificacion-cita` → `produccion` (`8de3c8d`) → `main` (`ee2a984`).
+
+---
+
+## 2026-06-20 — Sesión 9: Auditoría SonarQube + reset de contraseña de cliente
+
+> Auditoría de deuda técnica y seguridad con **SonarQube Community** (Docker, `:9000`),
+> escaneo Maven del backend. Migración **V17**. Detalle ampliado en la nota de proyecto.
+
+### Paso 41 — Reset de contraseña para cuentas de apoderado
+
+- `6deea1f` feat(auth): **reset de contraseña para clientes** (`V17__reset_token_cliente.sql`),
+  reutilizando la maquinaria del reset del usuario-negocio (UUID + SHA-256, un solo uso, 30 min,
+  204 siempre anti-enumeración). Email AFTER_COMMIT con enlace a `/clientes/reset/confirmar`;
+  sin SMTP degrada a log.
+
+### Paso 42 — Auditoría SonarQube: seguridad, acoplamiento, complejidad y code smells
+
+Resultado de `2b9c838` refactor(backend) — **todo verificado con 58 tests unitarios verdes**:
+
+| Hallazgo | Acción |
+|---|---|
+| **Hotspot CSRF** (`SecurityConfig`) | Revisado **SEGURO** (Bearer + STATELESS + refresh cookie HttpOnly + CORS restrictivo); comentario reescrito y marcado SAFE. Security Review **E → A** |
+| **3× self-invocation `@Transactional`** (S6809) | Extraídos helpers privados sin `@Transactional` (`confirmarInterno`, `registrarPagoInterno`, `construirExport`); **3 → 0**, sin cambio de comportamiento |
+| **2 bugs** `WebhookController` (S6863) | El `return 200 "ignorado"` vivía dentro de un `catch` (2xx que enmascaraba errores). Helper `parsearLongOrNull`; el 200 deliberado (para que MP no reintente) queda fuera del catch. **Fiabilidad C → A, 0 bugs** |
+| **Acoplamiento ≥9 deps** | `MantenimientoJobs` (11) **eliminado** → `TokenMantenimientoJobs`/`ClienteRetencionJobs`/`BloqueMantenimientoJobs`/`TenantPurgaJobs`. `AuthService` 9→7 (extraído `PasswordResetService` + `AuthCrypto`). `TenantService` 10→8 (extraído `TenantExportService`). `ReservaService`/`AgendaService` no tocados (cohesivos) |
+| **Complejidad cognitiva** (S3776) | `WebhookController.recibirWebhook` 27→<15 y `DisponibilidadService.horasLibres` 20→<15 (métodos extraídos). **S3776 = 0** |
+| **Code smells 56 → 0** | Ternarios anidados, literales duplicados (constantes), regex `\D`, import/excepción genérica, naming, dead-store; + **Quality Profile "ReservaKids Java"** con 6 reglas desactivadas y justificadas (S8688/S8692/S5778/S8694/S2143/S1135) |
+
+**Estado final del backend:** Quality Gate **OK** · 4 calificaciones en **A** ·
+**0 bugs · 0 vulnerabilidades · 0 hotspots · 0 code smells · deuda 0 min**.
+
+### Paso 43 — Verificación y release (gitflow)
+
+- `mvn test` (contenedor Maven): **58 tests verdes**; `npm run build` OK (~55.x kB gzip).
+- 3 commits lógicos en `feature/calidad-y-reset-cliente`: `6deea1f` (reset cliente),
+  `2b9c838` (calidad SonarQube), `75adc24` (refactor frontend, tooling, CI y docs).
+- **Merges:** `feature/calidad-y-reset-cliente` → `produccion` (`0e84bf4`) → `main` (`2a586d5`).
+- **CI en GitHub** (`2a586d5`): ✅ success — Backend 32s, Frontend 21s.
+
+---
+
+## 2026-06-20 (mediodía) — Sesión 10: Tenant scoping en lookups de cliente (§5.6)
+
+### Paso 44 — Fix de aislamiento multi-tenant
+
+- `7b211fe` fix(security): **tenant scoping en los lookups de cliente** (§5.6) — los lookups
+  pasan a usar `findByIdAndTenantId`, cerrando una vía por la que el `tenantId` no se
+  verificaba en algunos accesos a cliente; además se corrigieron las **referencias de jobs**
+  tras el split de `ExpiracionService` (Sesión 8/9).
+- `ddd2867` test(reserva): alinear los stubs de test con `findByIdAndTenantId`.
+
+### Paso 45 — Merges, push y CI
+
+- **Merges:** `fix/tenant-scoping-cliente-refs` → `produccion` (`4e640cd`) → `main` (`a27c026`).
+- Las 3 ramas (`fix/...`, `produccion`, `main`) **pusheadas y sincronizadas** con `origin`.
+- **CI en GitHub** (`a27c026`): ✅ success (40s).
+
+> Estado al cierre del 2026-06-20: working tree limpio, sin ramas pendientes de mergear a
+> `main`, sin stashes. Migraciones al día en **V17**.
+
+---
+
+## 2026-06-20 (tarde) — Sesión 11: Cierre de sprints pendientes + PWA + release v0.1.0
+
+> Auditoría independiente (`AUDITORIA_RESERVA_KIDS.md`) detectó que los Sprints 2 y 3 del
+> `PLAN_MEJORA_FRONTEND.MD` estaban a medio aplicar: los métodos de servicio existían pero
+> no estaban cableados a los controllers, faltaban tests, y no había PWA ni SEO. Esta sesión
+> cierra esos pendientes y versiona el resultado como **v0.1.0**.
+
+### Paso 46 — Backend: endpoints del Sprint 2 cableados
+
+Los métodos `solicitarResetPassword`/`confirmarResetPassword` existían en `ClienteAuthService`
+y la query de historial era trivial, pero **no estaban expuestos** en los controllers:
+
+| Cambio | Archivo |
+|---|---|
+| `POST /api/cliente-auth/reset/solicitar` + `/confirmar` (204 siempre, anti-enumeración) | `ClienteAuthController` |
+| `GET /api/cliente/reservas` (rol CLIENTE, `cuentaClienteId` del JWT, cruza tenants) | `DirectorioController` |
+| `listarReservasDeCliente` (anti-N+1, mismo patrón que `listar()`) | `ReservaService` |
+| `findByCuentaClienteId[AndEstado]OrderByCreadaEnDesc` | `ReservaRepository` |
+
+### Paso 47 — Tests backend (+8 unit, +3 IT)
+
+| Test | Cubre |
+|---|---|
+| `ClienteReservaServiceTest` (4) | Scoping por `cuentaClienteId`, filtro por estado, página vacía, anti-N+1 |
+| `PasswordResetClienteTest` (4) | Solicitud silenciosa, token de un solo uso, revocación de sesiones |
+| `PublicControllerIT` (3) | Catálogo, 404 slug inexistente, horas libres (IT con Testcontainers) |
+
+### Paso 48 — Frontend: PWA completa + iOS/Apple tags + SEO
+
+**PWA** (Sprint 3 §3.2): el panel del negocio (`/panel/**`) es instalable como app nativa
+sin tiendas. `vite-plugin-pwa` con `autoUpdate`, manifest con `display_override` + iconos
+`any`/`maskable` (192/512), service worker que precachea el shell (62 entries, 705 KiB) sin
+tocar las respuestas de la API.
+
+**iOS/Apple** (meta tags que iOS no lee del manifest): `apple-mobile-web-app-capable`,
+`apple-touch-icon` 180×180 sin alpha, `viewport-fit=cover`. Safe-area insets en top-bar y
+bottom-nav del `DashboardLayout` para respetar notch y home indicator.
+
+**Prompt de instalación** (`usePwaInstall` composable): captura `beforeinstallprompt`
+(Chrome/Android/Edge), botón "Instalar app" en sidebar y top-bar. iOS no dispara el evento
+→ instalación manual vía "Compartir → Añadir a pantalla de inicio" (documentado).
+
+**SEO** (Sprint 3 §3.3): `@vueuse/head` con meta tags dinámicos por negocio en
+`PublicSiteView` y estáticos en `LandingPageView`.
+
+### Paso 49 — Tests frontend (+13, total 45)
+
+- `BaseButton.spec` (8): variantes, disabled, loading, spinner.
+- `useDuration.spec` (5): formato horas/minutos/mixto, null/negativo.
+
+### Paso 50 — Documentación
+
+- `MANUAL_DESPLIEGUE.md`: sección "Instalación como app móvil (PWA)" con pasos para
+  iOS/Android/escritorio, requisitos servidos, comportamiento de actualizaciones y qué
+  NO es la PWA (sin push nativo, sin offline de API, sin tiendas).
+
+### Paso 51 — Release v0.1.0
+
+3 commits lógicos en `main` siguiendo conventional commits:
+
+- `cdaa420` feat(cliente): historial de reservas y reset de contraseña para apoderados
+- `8784d0a` feat(pwa): PWA completa con instalación iOS/Android/escritorio
+- `10c157d` docs(deploy): sección de instalación PWA en manual de despliegue
+
+Tag **v0.1.0**. Versiones alineadas: `pom.xml` `0.1.0`, `package.json` `0.1.0`.
+
+### Paso 52 — Verificación final
+
+- `mvn test`: **66 tests verdes** (58 previos + 8 nuevos).
+- `npm run test:run`: **45 tests verdes** (9 archivos, 2 nuevos).
+- `npm run build` (con `VITE_API_URL` de producción): **62 entries PWA precache, 705 KiB**.
+- `npm run lint`: sin errores.
+- Build de producción generado en `frontend/dist/` listo para servir por Caddy.
+
+---
+
+## 2026-06-22 — Sesión 12: CI verde + Testcontainers + Trivy
+
+> Reparación completa del pipeline de CI que fallaba en backend, frontend y seguridad.
+
+### Paso 53 — Fixes de tests de integración
+
+| Falla | Root cause | Fix |
+|---|---|---|
+| Docker Engine 29 exige API ≥1.40, pero Testcontainers 1.21.3 forzaba 1.32 | Incompatibilidad de cliente Docker | `pom.xml`: subir `<testcontainers.version>` a `1.21.4` |
+| `ReservaRepository.bloquearDia` con `@Modifying` + `SELECT pg_advisory_xact_lock` → SQLState 0100E | `pg_advisory_xact_lock` retorna `void`, Hibernate lo interpreta como "resultado inesperado" | Quitar `@Modifying`, cambiar retorno a `Object` |
+| `CsrfProtectionIT.refreshConOriginMaliciosoDebeFallar` fallaba por esperar mensaje JSON de CsrfFilter | CORS bloquea antes que CsrfFilter → no hay body | Solo aserta `status().isForbidden()` |
+| `WebhookMercadoPagoIT.tenantRateLimitExcedidoDevuelve429` llamaba a MP por firma válida | El `x-request-id` del loop coincidía con la firma precalculada | Cambiar `x-request-id` a `rate-limit-<i>` para invalidar firma |
+| 128 tests locales (94 unitarios + 34 integración), `BUILD SUCCESS` | | |
+
+### Paso 54 — Fix de seguridad (Trivy)
+
+- `.github/workflows/ci.yml`: `aquasecurity/trivy-action@v0.30.0` referenciaba `aquasecurity/setup-trivy@v0.2.2`, cuyo tag fue eliminado/hackeado → `Unable to resolve action`. Subido a `v0.36.0` que pinnea setup-trivy por SHA.
+- CI verde completo: Backend 1m42s, Seguridad 27s, Frontend 19s.
+
+### Paso 55 — Merges (gitflow)
+
+- `fix/ci-verde-it-restantes` → `produccion` → `main`
+- `fix/ci-trivy-setup` → `produccion` → `main`
+- Todas las ramas pusheadas y sincronizadas.
+
+---
+
+## 2026-06-22 (tarde) — Sesión 13: Provisión Automática Single-Tenant + Docker runtime injection
+
+> El modelo "Licencia Exclusiva" ($650.000+) requiere que el backend provisione el negocio
+> automáticamente al iniciar el contenedor, y que el frontend inyecte el slug en runtime sin
+> recompilar la imagen Docker por cliente.
+
+### Paso 56 — Bootstrapper automático de negocio
+
+| Pieza | Detalle |
+|---|---|
+| `application.yml` bloque `app.single-tenant.*` | 5 propiedades mapeadas a `RESERVAKIDS_SINGLE_TENANT_*`: `enabled`, `slug`, `nombre`, `admin-email`, `admin-password` |
+| `SingleTenantBootstrapper.java` | `ApplicationRunner` idempotente: verifica `enabled=true` y `tenantRepository.count() == 0`, luego llama `AuthService.registrar()` que crea Tenant + Usuario + Horario por Defecto |
+| `docker-compose.yml` backend service | 5 env vars ST con defaults vacíos; el bootstrapper solo actúa si todas están presentes |
+
+### Paso 57 — Inyección runtime del slug en el frontend
+
+**Problema:** `VITE_*` env vars de Vite se incrustan en el bundle JS durante `vite build`. No se pueden cambiar sin recompilar.
+
+**Solución:** patrón `window.__SINGLE_TENANT_SLUG__`:
+
+| Pieza | Detalle |
+|---|---|
+| `frontend/index.html` | `<script>window.__SINGLE_TENANT_SLUG__ = "";</script>` — placeholder antes de `#app` |
+| `frontend/entrypoint.sh` | `sed` reemplaza el placeholder con `$VITE_SINGLE_TENANT_SLUG` al iniciar nginx |
+| `frontend/Dockerfile` | Multistage: `node:22-alpine` build + `nginx:alpine` serve con entrypoint |
+| `frontend/nginx.conf` | SPA routing + CSP + gzip + headers de seguridad + `no-cache` en index.html |
+| `router/index.js` | `isSingleTenant` lee `window.__SINGLE_TENANT_SLUG__` con fallback a `import.meta.env` (dev mode) |
+| `PublicSiteView.vue` + `AgendarView.vue` | Priorizan `window.__SINGLE_TENANT_SLUG__` → `import.meta.env.*` → `route.params.slug` |
+
+### Paso 58 — Reverse proxy (Caddy) en docker-compose
+
+- `Caddyfile.docker`: reverse proxy `:80` → `frontend:80` y `backend:8080` con CSP, TLS-ready
+- Servicio `caddy` en `docker-compose.yml` con `caddy:alpine`, puertos 80/443, volumen `caddy_data`
+- Arquitectura: Cliente → Caddy:80 → nginx:80 (estáticos) / backend:8080 (API)
+
+### Paso 59 — Documentación
+
+- `PROVISIONAMIENTO_AUTOMATICO.md` reescrito con diagrama de contenedores, flujo Docker, modo híbrido dev.
+
+---
+
+## 2026-06-23 (mañana) — Sesión 14: Marca Blanca + Meta Pixel + Privacidad + Backups
+
+> 5 features orientadas a la experiencia del cliente final (dueño del salón) y al blindaje legal
+> y operativo del modelo de licencias exclusivas.
+
+### Paso 60 — Marca Blanca Visual
+
+| Pieza | Detalle |
+|---|---|
+| `V28__marca_blanca_pixel.sql` | `ALTER TABLE tenant ADD color_primario VARCHAR(7) DEFAULT '#b5007d'`, `titulo_pagina VARCHAR(120)`, `meta_pixel_id VARCHAR(50)` |
+| `Tenant.java` | `colorPrimario`, `tituloPagina`, `metaPixelId` |
+| `TenantDtos.ActualizarConfigRequest` | Extendido con los 3 nuevos campos + validación hex en `TenantService.guardarConfiguracion()` |
+| `PublicController.catalogo` | Expone `colorPrimario`, `tituloPagina`, `metaPixelId` en la respuesta JSON |
+| `PublicSiteView.aplicarMarcaBlanca()` | Inyecta `--color-primary` en `:root`, actualiza `<meta name="theme-color">`, setea `document.title` |
+| `ConfiguracionView.vue` | Sección "Marca blanca" con color picker, input hex, previsualización, título de pestaña |
+| `vite.config.js` + `index.html` | `theme_color` cambiado de `#7C4DFF` a `#b5007d` |
+| `PublicSiteView.vue` checkbox | `accent-[#b5007d]` → `accent-primary` (respeta el color del tenant) |
+
+### Paso 61 — Meta Pixel (Facebook/Instagram)
+
+- `PublicSiteView.aplicarMarcaBlanca()`: inyecta dinámicamente `fbq('init', pixelId)` si `negocio.metaPixelId` existe.
+- CSP actualizado en **4 archivos** (`index.html`, `nginx.conf`, `Caddyfile`, `Caddyfile.docker`): `script-src` permite `https://connect.facebook.net`, `connect-src` e `img-src` permiten `https://www.facebook.com`.
+
+### Paso 62 — Check de Privacidad (Ley 19.628)
+
+- `AgendarView.vue` paso 3 (pago): checkbox `aceptaPrivacidad` con enlace a `/privacidad`. `pagar()` bloquea el pago si no está marcado.
+- Ya existía en `PublicSiteView.vue` (formulario de cotización pública).
+
+### Paso 63 — Backups Automáticos (pg_dump diario 03:00 AM)
+
+| Pieza | Detalle |
+|---|---|
+| `backup/Dockerfile` | Alpine 3.21 + `postgresql16-client` + `dcron` + `gzip` |
+| `backup/entrypoint.sh` | Backup inmediato al iniciar + cron `0 3 * * *` (3 AM UTC), verificación con `zgrep`, retención 14 días, idempotente |
+| `docker-compose.yml` | Servicio `backup` + volumen `backups` |
+
+### Paso 64 — Validación
+
+- `mvn verify`: **128 tests verdes** (94 unitarios + 34 integración).
+- `docker compose up --wait`: 6/6 healthy (db, mailpit, backend, frontend, caddy, backup).
+- Backups verificados: "Backup OK: 12970 bytes".
+
+---
+
+## 2026-06-23 (mañana, continuación) — Sesión 15: Saldos + Legal + RSVP + Upsells + Caja
+
+> 5 features que completan el ciclo operativo del dueño: cobranza post-seña, blindaje legal,
+> captación de clientes por RSVP, venta cruzada y cierre de caja diario.
+
+### Paso 65 — Flyway V29
+
+`V29__saldos_legal_rsvp_upsells_caja.sql`:
+
+| Migración | Tabla / columna |
+|---|---|
+| `politicas_cancelacion TEXT` | `tenant` |
+| `es_adicional BOOLEAN DEFAULT false` | `servicio` |
+| `politicas_aceptadas_en TIMESTAMPTZ` | `reserva` |
+| `invitado` (nueva tabla) | `id`, `tenant_id`, `reserva_id`, `nombre`, `email`, `telefono`, `estado`, `token`, `comentarios`, `creado_en` |
+
+### Paso 66 — Escudo Legal (Políticas de Cancelación)
+
+| Archivo | Cambio |
+|---|---|
+| `Tenant.java` | `politicasCancelacion` (TEXT) |
+| `TenantDtos.ActualizarConfigRequest` | `politicasCancelacion` |
+| `TenantService.guardarConfiguracion()` | Guarda/borra políticas |
+| `Reserva.java` | `politicasAceptadasEn` timestamp |
+| `PublicController.catalogo` | Expone `politicasCancelacion` |
+| `ConfiguracionView.vue` | Textarea "Políticas de cancelación" (máx 5000 chars) |
+| `PublicSiteView.vue` | Muestra políticas (si existen) + checkbox `aceptaPoliticas` obligatorio antes de enviar |
+
+### Paso 67 — RSVP / Invitados
+
+| Pieza | Detalle |
+|---|---|
+| `Invitado.java` | Entidad con `nombre`, `email`, `telefono`, `estado` (PENDIENTE/CONFIRMADO/RECHAZADO), `token` único (64 chars hex) |
+| `InvitadoService.java` | `agregar()` genera token criptográfico, `confirmarRsrv(token)` / `rechazarRsrv(token)` idempotentes, `resumen()` cuenta por estado |
+| `InvitadoController.java` | `GET/POST /api/reservas/{id}/invitados`, `DELETE /api/reservas/{id}/invitados/{invId}`, `GET .../invitados/resumen` |
+| `RsvpPublicController.java` | `GET /api/public/invitacion/{token}`, `POST .../confirmar`, `POST .../rechazar` — sin auth |
+| `RsvpView.vue` | Página pública con nombre del invitado, botones "¡Voy a ir!" / "No voy a poder", campo de comentarios opcional |
+| `router/index.js` | Ruta `/invitacion/:token` |
+| `SolicitudesView.vue` | Sección "Invitados" expandible en cada reserva: formulario para agregar + lista con estado de RSVPs + botón quitar |
+
+### Paso 68 — Upsells (Venta Cruzada)
+
+| Archivo | Cambio |
+|---|---|
+| `Servicio.java` | `esAdicional` boolean (default false) |
+| `ServicioDtos.java` | `ServicioRequest.esAdicional`, `ServicioResponse.esAdicional` |
+| `ServicioService.java` | `aplicar()` maneja `esAdicional` |
+| `ServiciosView.vue` | Checkbox "Servicio adicional" en formulario + badge "Adicional" en cards |
+| `PublicSiteView.vue` | `serviciosPrincipales` (filtra `!esAdicional`) como opciones principales; `serviciosAdicionales` como checkboxes en sección "Agregá extras" |
+
+### Paso 69 — Cierre de Caja Diario
+
+| Pieza | Detalle |
+|---|---|
+| `CajaDtos.CajaDiariaResponse` | `fecha`, `totalReservas`, `reservasConfirmadas`, `citasAgendadas`, `pagosHoy`, `totalRecaudadoHoy`, `saldoPendienteTotal`, `seniaPromedio` |
+| `CajaService.java` | Filtra reservas del día por `inicio` o `creadaEn` en zona `America/Santiago`, cruza con `PagoRepository.totalesPagadosPorReserva()` |
+| `SistemaController.java` | `GET /api/sistema/caja?fecha=YYYY-MM-DD` |
+| `SolicitudesView.vue` | Widget "Caja diaria" con selector de fecha, 4 KPIs: reservas hoy, citas hoy, recaudado hoy, saldo pendiente |
+
+### Paso 70 — Saldos Pendientes (ya existía parcialmente)
+
+- `ReservaResponse.saldoClp` ya se computaba como `totalClp - pagadoClp` (`ReservaDtos.java:47`).
+- Nueva exposición en el widget de Caja: `saldoPendienteTotal` y `seniaPromedio`.
+- El saldo por reserva ya se destacaba en `SolicitudesView` con `<strong class="text-primary">Saldo {{ clp(r.saldoClp) }}</strong>`.
+
+### Paso 71 — Validación
+
+- `mvn verify`: **128 tests verdes** (94 unitarios + 34 integración).
+- `docker compose up --wait`: 6/6 healthy.
+- Backup diario: "Backup OK: 13290 bytes" (incluye nuevas tablas).
+
+---
+
+## 2026-06-23 (mediodía) — Sesión 16: Staff + Inventario + Google Calendar Feed
+
+> 3 features: roles de personal sin acceso a finanzas, gestión de stock físico para upsells,
+> y sincronización con Google Calendar vía feed iCal público.
+
+### Paso 72 — Flyway V30
+
+`V30__staff_inventario_calendar_feed.sql`:
+
+| Migración | Detalle |
+|---|---|
+| `staff` (nueva tabla) | `id`, `tenant_id`, `nombre`, `email` (UNIQUE), `password_hash`, `telefono`, `rol` (default 'ANIMADOR'), `activo`, `whatsapp_recordatorio`, `creado_en` |
+| `servicio.stock` | `INTEGER` (nullable — null = stock infinito) |
+| Índices | `idx_staff_tenant`, `idx_invitado_token`, `idx_invitado_reserva` |
+
+### Paso 73 — Gestión de Personal (Staff)
+
+**Backend — modelo:**
+| Pieza | Detalle |
+|---|---|
+| `Staff.java` | Entidad con `tenantId`, `email`, `passwordHash`, `nombre`, `telefono`, `rol` (String libre, default ANIMADOR), `activo`, `whatsappRecordatorio` |
+| `StaffRepository.java` | `findByEmail`, `findByTenantIdAndActivoTrueAndWhatsappRecordatorioTrue`, etc. |
+| `StaffService.java` | `login()` con bcrypt, `crear()`, `eliminar()` (soft-delete), `eventosDelDia()` (solo CONFIRMADA/REALIZADA), `staffConWhatsapp()` |
+
+**Backend — auth:**
+| Pieza | Detalle |
+|---|---|
+| `JwtService.emitirStaff()` | Emite JWT con claims `tenantId`, `rol=STAFF`, `nombre` — access 15 min |
+| `JwtService.emitirRefreshStaff()` | Refresh 30 días con rol STAFF |
+| `SecurityConfig.java` | Permite `POST /api/staff/login` sin auth, resto de `/api/staff/**` requiere `ROLE_STAFF` |
+| `StaffController.java` | `POST /api/staff/login` → `StaffTokenResponse`, `GET /api/staff/eventos?fecha=YYYY-MM-DD` → solo `id`, `hora`, `numNinos`, `comuna`, `estado` **(sin precios, sin métricas, sin datos sensibles del negocio)** |
+
+**Backend — WhatsApp automático al staff:**
+| Pieza | Detalle |
+|---|---|
+| `NotificacionWhatsappPort.recordatorioStaff()` | Nuevo método en el puerto |
+| `WhatsappStubAdapter.recordatorioStaff()` | Stub → log; real → Meta Cloud API v22.0 |
+| `RecordatorioJobs.recordatorioStaffViernes()` | `@Scheduled(cron = "0 0 23 * * FRI")` — cada viernes 23:00 UTC (19:00 CLT): para cada tenant activo, busca eventos del sábado, construye detalle y envía WhatsApp al staff que tenga `whatsappRecordatorio=true` y `telefono` no nulo |
+
+**Frontend:**
+| Pieza | Detalle |
+|---|---|
+| `stores/staff.js` | Pinia store con `login(email, password)`, `logout()`, `accessToken`, datos del staff |
+| `StaffLoginView.vue` | `/staff/entrar` — login con email/password, fondo decorativo |
+| `StaffCalendarView.vue` | `/staff/calendario` — selector de fecha, lista de eventos con hora grande + niños + comuna + badge de estado **(cero referencias a precios o finanzas)** |
+| `router/index.js` | Rutas `/staff/entrar` y `/staff/calendario` con guards `soloInvitados: 'staff'` / `requiereStaff` y redirecciones cruzadas entre roles |
+
+### Paso 74 — Inventario (Stock)
+
+| Archivo | Cambio |
+|---|---|
+| `Servicio.java` | `stock` (Integer nullable — null = infinito) |
+| `ServicioDtos.java` | `ServicioRequest.stock` (`@Min(0)`), `ServicioResponse.stock` |
+| `ServicioService.aplicar()` | `req.stock()` — 0 se guarda como null |
+| `PublicController.catalogo` | `.filter(s -> s.stock() == null \|\| s.stock() > 0)` — si stock llega a 0, el servicio desaparece del frontend público automáticamente |
+| `ServiciosView.vue` | Campo "Stock disponible" (solo visible si `esAdicional=true`), badge `Stock: N` en la card del servicio |
+
+### Paso 75 — Google Calendar Feed (iCal público)
+
+| Pieza | Detalle |
+|---|---|
+| `PublicController.feedIcal()` | `GET /api/public/{slug}/calendar.ics` — sin auth, público |
+| Contenido | `VCALENDAR` con `METHOD:PUBLISH`, `X-WR-CALNAME:{tenant.nombre}`, `REFRESH-INTERVAL:PT1H` |
+| VEVENTs | Todas las reservas CONFIRMADA con `inicio != null`; `UID:{id}@reservakids.cl`, `DTSTART/DTEND` en `America/Santiago`, `SUMMARY:Fiesta infantil`, `DESCRIPTION:{N} niños - {comuna}` |
+| **Sin precios, sin nombres de cliente, sin datos sensibles** | |
+| Uso | El dueño pega `https://reservas-salonfantasia.cl/api/public/salon-fantasia/calendar.ics` en Google Calendar → "Desde URL" → se sincroniza automáticamente cada hora |
+
+### Paso 76 — Validación final
+
+- `mvn verify`: **128 tests verdes** (94 unitarios + 34 integración).
+- `npm run build`: OK (~1038 KiB PWA precache, 74 entries).
+- `docker compose up --wait`: 6/6 healthy.
+- Staff login endpoint responde correctamente (400 si credenciales inválidas).
+- iCal feed retorna `VCALENDAR` válido con VEVENTs.
+- Backup diario: "Backup OK: 13569 bytes" (incluye tabla staff).
+
+---
+
+> **Estado al cierre del 2026-06-23:** working tree limpio. Migraciones al día en **V30**.
+> Stack operativo completo: 6 servicios Docker (db, mailpit, backend, frontend, caddy, backup).
+> 128 tests backend verdes. Frontend PWA funcional con 4 roles de acceso (DUENO, ADMIN, CLIENTE, STAFF).
+
+---
+
+## Sesión 2026-06-23 (tarde) — Migración Nuxt 3 SSR + capacidades nuevas + readiness de deploy
+
+> **Corrección al cierre previo:** el bloque anterior ("working tree limpio, V30, frontend Vite/PWA")
+> quedó desfasado. Esta sesión cierra una migración grande que NO estaba commiteada.
+
+### Frontend — migración Vite SPA → **Nuxt 3 SSR**
+- `vue-router` + estáticos `dist/` → Nuxt 3 con file-based routing (`src/pages`), `layouts/`,
+  middleware global (`auth.global.ts`, `single-tenant.global.ts`).
+- Dos unidades de deploy SSR (`frontend-public` :3000 / `frontend-panel` :3001) ruteadas por Caddy.
+- Single-tenant ahora por env runtime (`NUXT_PUBLIC_SINGLE_TENANT_SLUG`), no por build.
+- Eliminado el código muerto de la migración: `src/views/` (legacy) y duplicados `frontend/pages/`, `frontend/app.vue`.
+
+### Backend — capacidades nuevas
+- RBAC (roles/permisos, `PermissionEvaluator` + `@PreAuthorize`), Staff, Invitados/RSVP, Caja,
+  OAuth2 SSO (Google), sync Google Calendar + feed iCal público, Idempotency-Key, monitor de
+  fallos de webhook, bootstrap single-tenant. Migraciones **V28..V34**.
+
+### Deploy / seguridad
+- `deploy-prod.sh` reescrito para Nuxt SSR (Docker construye; levanta db+backend+2 front SSR+backup).
+- **Fix de exposición crítico:** Compose fusiona listas de `ports`; sin `!override` los binds a
+  `127.0.0.1` de `compose.prod.yml` no quitaban los `0.0.0.0` del base → Postgres/backend/Grafana
+  quedaban expuestos en el VPS. Añadido `!override`; observabilidad y Grafana (sin admin anónimo) en loopback.
+- `docker-compose.yml`: quitado `depends_on: mailpit` del backend (invalidaba el proyecto en prod).
+- Fix test `ReservaServiceTest` (stub `whatsapp.linkWhatsApp`). **`mvn verify`: 98 unit + 34 IT verdes.**
+
+### CI / PR
+- PR #14 contra `main`. Fixes de CI: `package-lock.json` resincronizado (`npm ci` fallaba) y
+  permisos `pull-requests: read` para gitleaks (fallaba con 403).
+
+### Estado real al cierre
+- Migraciones al día en **V34**. Backend `mvn verify` verde. Frontend Nuxt SSR construye.
+- Pendiente operativo: comprar dominio del cliente y ejecutar `deploy-prod.sh` en el VPS.

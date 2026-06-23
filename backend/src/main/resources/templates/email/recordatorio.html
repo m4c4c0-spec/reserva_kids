@@ -1,0 +1,19 @@
+<th:block th:fragment="contenido">
+  <p style="margin:0 0 16px">Hola <strong th:text="${clienteNombre}">Nombre</strong>,</p>
+  <p style="margin:0 0 12px">📅 <strong>Recordatorio:</strong> tienes una reserva mañana en <strong th:text="${negocioNombre}">Negocio</strong>.</p>
+
+  <table width="100%" cellpadding="8" cellspacing="0" style="background:#faf8fd;border-radius:12px;margin:16px 0">
+    <tr th:if="${fechaHora != null}">
+      <td style="color:#7a6e85;font-size:13px;width:100px">Hora</td>
+      <td style="font-weight:700" th:text="${fechaHora}">14:00</td>
+    </tr>
+    <tr th:each="s : ${servicios}">
+      <td style="color:#7a6e85;font-size:13px">Servicio</td>
+      <td style="font-weight:700" th:text="${s.nombre}">Cumpleaños</td>
+    </tr>
+  </table>
+
+  <p style="margin:16px 0 0;font-size:14px;font-weight:700;color:#b5007d">
+    ¡Recuerda llegar puntual! Te esperamos 🎈
+  </p>
+</th:block>

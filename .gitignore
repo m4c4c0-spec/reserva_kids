@@ -7,10 +7,14 @@ backend/target/
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/.nuxt/
+frontend/.output/
 
 # Entorno (secretos reales NUNCA al repo — RNF-02b)
 .env
 *.env.local
+# Env de despliegue Cloud Run (tiene DB_PASSWORD y JWT_SECRET reales)
+backend/deploy/cloudrun.env.yaml
 
 # IDE / SO
 .idea/
@@ -20,3 +24,10 @@ frontend/dist/
 
 # Herramientas de IA (artefactos locales)
 .aider*
+.claude/
+.mcp.json
+
+# Fuentes de diseño (mockups/exports) — no son código, viven aparte
+/Diseno_*.zip
+/Diseno*.zip
+/DISENO_*.png

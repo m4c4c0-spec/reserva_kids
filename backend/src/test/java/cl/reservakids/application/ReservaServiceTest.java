@@ -3,8 +3,11 @@ package cl.reservakids.application;
 import cl.reservakids.application.dto.ReservaDtos.CotizarRequest;
 import cl.reservakids.application.dto.ReservaDtos.PagoRequest;
 import cl.reservakids.application.dto.ReservaDtos.SolicitudPublicaRequest;
+import cl.reservakids.application.usecase.AuditPort;
 import cl.reservakids.application.usecase.NotificacionPort;
+import cl.reservakids.application.usecase.NotificacionWhatsappPort;
 import cl.reservakids.application.usecase.ReservaService;
+import cl.reservakids.infrastructure.security.HtmlSanitizer;
 import cl.reservakids.domain.exception.ConflictoBloqueException;
 import cl.reservakids.domain.exception.RecursoNoEncontradoException;
 import cl.reservakids.domain.model.*;
@@ -14,8 +17,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -30,8 +36,13 @@ class ReservaServiceTest {
     @Mock BloqueDisponibleRepository bloqueRepository;
     @Mock ClienteRepository clienteRepository;
     @Mock ReservaRepository reservaRepository;
+    @Mock ReservaServicioRepository reservaServicioRepository;
     @Mock PagoRepository pagoRepository;
     @Mock NotificacionPort notificacion;
+    @Mock NotificacionWhatsappPort whatsapp;
+    @Mock AuditPort audit;
+    // Stateless: usamos el real (sanitize devuelve el texto) en vez de un mock que daría null.
+    @Spy HtmlSanitizer sanitizer = new HtmlSanitizer();
 
     @InjectMocks ReservaService service;
 
@@ -52,8 +63,8 @@ class ReservaServiceTest {
     }
 
     private SolicitudPublicaRequest solicitud() {
-        return new SolicitudPublicaRequest(10L, 20L, "Ana", "+56 9 1111 1111",
-                "ana@mail.cl", 15, "Victoria", "Tema dinosaurios", true);
+        return new SolicitudPublicaRequest(10L, 20L, "Ana", "11.111.111-1",
+                "+56 9 1111 1111", "ana@mail.cl", 15, "Victoria", "Tema dinosaurios", null, true);
     }
 
     @Test
@@ -76,11 +87,43 @@ class ReservaServiceTest {
             return r;
         });
         when(pagoRepository.totalPagado(40L)).thenReturn(0);
+        // El link de WhatsApp se anexa a la notificación al dueño; el adaptador real nunca lo
+        // devuelve null, así que lo stubeamos para que el matcher anyString() lo capture.
+        when(whatsapp.linkWhatsApp(any(Cliente.class), any(Reserva.class)))
+                .thenReturn("https://wa.me/56911111111");
 
         var respuesta = service.crearSolicitudPublica("fiestas-pepito", solicitud());
 
         assertEquals("PENDIENTE", respuesta.estado());
-        verify(notificacion).nuevaSolicitud(eq(tenant), any(Reserva.class), any(Cliente.class));
+        verify(notificacion).nuevaSolicitud(eq(tenant), any(Reserva.class), any(Cliente.class), anyString());
+    }
+
+    @Test
+    void webhookDeCitaAprobadaConfirmaYNotificaPorAmbosCanales() {
+        Reserva cita = new Reserva();
+        cita.setId(50L);
+        cita.setTenantId(1L);
+        cita.setClienteId(30L);
+        cita.setEstado(EstadoReserva.PENDIENTE_PAGO);
+        cita.setInicio(OffsetDateTime.now().plusDays(1)); // inicio != null ⇒ es una cita por hora
+        cita.setFin(cita.getInicio().plusHours(1));
+        Cliente cliente = new Cliente();
+        cliente.setId(30L);
+        cliente.setNombre("Ana");
+        cliente.setTelefono("56911111111");
+        cliente.setEmail("ana@mail.cl");
+
+        when(reservaRepository.findByIdAndTenantId(50L, 1L)).thenReturn(Optional.of(cita));
+        when(pagoRepository.existsByReferenciaExterna("pay-1")).thenReturn(false);
+        when(tenantRepository.findById(1L)).thenReturn(Optional.of(tenant));
+        when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.of(cliente));
+        when(reservaServicioRepository.findByReservaIdOrderById(50L)).thenReturn(List.of());
+
+        service.procesarWebhookPago(1L, 50L, "pay-1", 12000, "approved", "MERCADOPAGO");
+
+        assertEquals(EstadoReserva.CONFIRMADA, cita.getEstado());
+        verify(notificacion).citaConfirmada(eq(tenant), eq(cita), eq(cliente), anyList());
+        verify(whatsapp).confirmacionReserva(eq(tenant), eq(cita), eq(cliente), anyList());
     }
 
     @Test
@@ -94,13 +137,13 @@ class ReservaServiceTest {
         assertThrows(ConflictoBloqueException.class,
                 () -> service.crearSolicitudPublica("fiestas-pepito", solicitud()));
         verify(reservaRepository, never()).saveAndFlush(any());
-        verify(notificacion, never()).nuevaSolicitud(any(), any(), any());
+        verify(notificacion, never()).nuevaSolicitud(any(), any(), any(), anyString());
     }
 
     @Test
     void cotizarRechazaSeniaMayorAlTotal() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.cotizar(1L, 40L, new CotizarRequest(100_000, 150_000)));
+                () -> service.cotizar(1L, 9L, 40L, new CotizarRequest(100_000, 150_000)));
     }
 
     @Test
@@ -108,7 +151,7 @@ class ReservaServiceTest {
         // Aislamiento multi-tenant: la reserva de otro tenant no es visible
         when(reservaRepository.findByIdAndTenantId(40L, 99L)).thenReturn(Optional.empty());
         assertThrows(RecursoNoEncontradoException.class,
-                () -> service.cotizar(99L, 40L, new CotizarRequest(100_000, 30_000)));
+                () -> service.cotizar(99L, 9L, 40L, new CotizarRequest(100_000, 30_000)));
     }
 
     @Test
@@ -116,9 +159,9 @@ class ReservaServiceTest {
         Reserva reserva = reservaEnEstado(EstadoReserva.COTIZADA);
         when(reservaRepository.findByIdAndTenantId(40L, 1L)).thenReturn(Optional.of(reserva));
         when(pagoRepository.totalPagado(40L)).thenReturn(30_000);
-        when(clienteRepository.findById(30L)).thenReturn(Optional.empty());
+        when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
-        var respuesta = service.confirmar(1L, 40L);
+        var respuesta = service.confirmar(1L, 9L, 40L);
 
         assertEquals("CONFIRMADA", respuesta.estado());
         verify(bloqueRepository).transicionarEstado(20L, 1L, EstadoBloque.EN_ESPERA, EstadoBloque.CONFIRMADO);
@@ -132,7 +175,7 @@ class ReservaServiceTest {
         when(pagoRepository.totalPagado(40L)).thenReturn(30_000);
 
         assertThrows(IllegalArgumentException.class, () -> service.registrarPago(1L, 9L, 40L,
-                new PagoRequest(50_000, "TRANSFERENCIA", null, "DEVOLUCION")));
+                new PagoRequest(50_000, "TRANSFERENCIA", null, "DEVOLUCION", null)));
         verify(pagoRepository, never()).save(any());
     }
 
@@ -153,12 +196,46 @@ class ReservaServiceTest {
         cliente.setTelefono("56911111111");
         when(clienteRepository.findAllById(java.util.Set.of(30L))).thenReturn(java.util.List.of(cliente));
 
-        var pagina = service.listar(1L, null, pageable);
+        var pagina = service.listar(1L, null, null, pageable);
 
         assertEquals(30_000, pagina.getContent().get(0).pagadoClp());
         assertEquals(0, pagina.getContent().get(1).pagadoClp());
         verify(pagoRepository, never()).totalPagado(anyLong());
-        verify(clienteRepository, never()).findById(anyLong());
+        verify(clienteRepository, never()).findByIdAndTenantId(anyLong(), anyLong());
+    }
+
+    /** Búsqueda del panel: con término no vacío usa la query buscar() con patrón y #reserva. */
+    @Test
+    void listarConBusquedaUsaQueryBuscar() {
+        Reserva r1 = reservaEnEstado(EstadoReserva.PENDIENTE);
+        var pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+        when(reservaRepository.buscar(1L, -1L, "%ana%", pageable))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(r1), pageable, 1));
+        when(pagoRepository.totalesPagadosPorReserva(java.util.List.of(40L)))
+                .thenReturn(java.util.List.<Object[]>of());
+        Cliente cliente = new Cliente();
+        cliente.setId(30L);
+        cliente.setNombre("Ana");
+        cliente.setTelefono("56911111111");
+        when(clienteRepository.findAllById(java.util.Set.of(30L))).thenReturn(java.util.List.of(cliente));
+
+        var pagina = service.listar(1L, null, "  Ana  ", pageable);
+
+        assertEquals(1, pagina.getContent().size());
+        verify(reservaRepository).buscar(1L, -1L, "%ana%", pageable);
+        verify(reservaRepository, never()).findByTenantIdOrderByCreadaEnDesc(anyLong(), any());
+    }
+
+    /** Término numérico → busca también por #reserva exacto (reservaId parseado). */
+    @Test
+    void listarConTerminoNumericoBuscaPorIdDeReserva() {
+        var pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+        when(reservaRepository.buscar(1L, 41L, "%41%", pageable))
+                .thenReturn(org.springframework.data.domain.Page.empty(pageable));
+
+        service.listar(1L, null, "41", pageable);
+
+        verify(reservaRepository).buscar(1L, 41L, "%41%", pageable);
     }
 
     /** Falla #2 (revisión 2 años): REALIZADA dejó de ser inalcanzable. */
@@ -167,9 +244,9 @@ class ReservaServiceTest {
         Reserva reserva = reservaEnEstado(EstadoReserva.CONFIRMADA);
         when(reservaRepository.findByIdAndTenantId(40L, 1L)).thenReturn(Optional.of(reserva));
         when(pagoRepository.totalPagado(40L)).thenReturn(100_000);
-        when(clienteRepository.findById(30L)).thenReturn(Optional.empty());
+        when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
-        var respuesta = service.realizar(1L, 40L);
+        var respuesta = service.realizar(1L, 9L, 40L);
 
         assertEquals("REALIZADA", respuesta.estado());
         verifyNoInteractions(bloqueRepository); // el bloque pasado se queda CONFIRMADO
@@ -180,9 +257,9 @@ class ReservaServiceTest {
         Reserva reserva = reservaEnEstado(EstadoReserva.PENDIENTE);
         when(reservaRepository.findByIdAndTenantId(40L, 1L)).thenReturn(Optional.of(reserva));
         when(pagoRepository.totalPagado(40L)).thenReturn(0);
-        when(clienteRepository.findById(30L)).thenReturn(Optional.empty());
+        when(clienteRepository.findByIdAndTenantId(30L, 1L)).thenReturn(Optional.empty());
 
-        var respuesta = service.cancelar(1L, 40L, null);
+        var respuesta = service.cancelar(1L, 9L, 40L, null);
 
         assertEquals("CANCELADA", respuesta.estado());
         verify(bloqueRepository).transicionarEstado(20L, 1L, EstadoBloque.EN_ESPERA, EstadoBloque.DISPONIBLE);

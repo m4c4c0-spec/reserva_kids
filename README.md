@@ -46,9 +46,12 @@ reserva_kids/
 ```bash
 cp .env.example .env          # editar secretos (JWT_SECRET, passwords)
 
-# Base de datos + API
-docker compose up -d db
-cd backend && mvn spring-boot:run   # requiere Java 21 + Maven (ver abajo)
+# Base de datos + SMTP de desarrollo (Mailpit) + API
+docker compose up -d db mailpit
+MAIL_HOST=localhost MAIL_PORT=1025 MAIL_SMTP_AUTH=false MAIL_SMTP_STARTTLS=false \
+  mvn -f backend spring-boot:run   # requiere Java 21 + Maven (ver abajo)
+
+# Los correos (reset de contraseña, avisos de solicitudes) quedan en http://localhost:8025
 
 # Frontend
 cd frontend && npm install && npm run dev   # http://localhost:5173

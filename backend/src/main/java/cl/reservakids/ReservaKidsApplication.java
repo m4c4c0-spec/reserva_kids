@@ -2,10 +2,10 @@ package cl.reservakids;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableScheduling;
 
+// @EnableScheduling vive en SchedulingConfig (@Profile("!test")): así los jobs no compiten
+// por el pool de conexiones con los IT de concurrencia ni introducen no-determinismo en tests.
 @SpringBootApplication
-@EnableScheduling // jobs: expiración de solicitudes (RF-05) y purga de refresh tokens
 public class ReservaKidsApplication {
 
     public static void main(String[] args) {
