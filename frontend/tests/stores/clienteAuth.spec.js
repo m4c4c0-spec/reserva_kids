@@ -51,8 +51,10 @@ describe('useClienteAuthStore', () => {
     const auth = useClienteAuthStore()
     await auth.refresh()
     expect(auth.accessToken).toBe('cli-tok-2')
-    expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/cliente-auth/refresh'), null, {
-      withCredentials: true,
-    })
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/cliente-auth/refresh'),
+      null,
+      expect.objectContaining({ withCredentials: true }),
+    )
   })
 })

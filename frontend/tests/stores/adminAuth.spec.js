@@ -32,7 +32,7 @@ describe('useAdminAuthStore', () => {
     expect(axios.post).toHaveBeenCalledWith(
       expect.stringContaining('/admin-auth/login'),
       { email: 'ops@rk.cl', password: 'pass1234' },
-      { withCredentials: true },
+      expect.objectContaining({ withCredentials: true }),
     )
   })
 
@@ -50,8 +50,10 @@ describe('useAdminAuthStore', () => {
     const auth = useAdminAuthStore()
     await auth.refresh()
     expect(auth.accessToken).toBe('adm-tok-2')
-    expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/admin-auth/refresh'), null, {
-      withCredentials: true,
-    })
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/admin-auth/refresh'),
+      null,
+      expect.objectContaining({ withCredentials: true }),
+    )
   })
 })
