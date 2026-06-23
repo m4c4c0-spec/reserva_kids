@@ -128,10 +128,27 @@ public class ReservaService {
      * (total pagado + cliente) — 41 queries por página de 20. Ahora: 3 en total.
      */
     @Transactional(readOnly = true)
-    public Page<ReservaResponse> listar(Long tenantId, EstadoReserva estado, Pageable pageable) {
-        Page<Reserva> pagina = estado == null
-                ? reservaRepository.findByTenantIdOrderByCreadaEnDesc(tenantId, pageable)
-                : reservaRepository.findByTenantIdAndEstadoOrderByCreadaEnDesc(tenantId, estado, pageable);
+    public Page<ReservaResponse> listar(Long tenantId, EstadoReserva estado, String q, Pageable pageable) {
+        String termino = q == null ? "" : q.trim();
+        Page<Reserva> pagina;
+        if (termino.isEmpty()) {
+            pagina = estado == null
+                    ? reservaRepository.findByTenantIdOrderByCreadaEnDesc(tenantId, pageable)
+                    : reservaRepository.findByTenantIdAndEstadoOrderByCreadaEnDesc(tenantId, estado, pageable);
+        } else {
+            // Patrón LIKE armado en Java (no CONCAT) para que el bind se tipe como texto.
+            String patron = "%" + termino.toLowerCase() + "%";
+            // Si el término es numérico, también busca por #reserva exacto; si no, -1 nunca matchea.
+            Long reservaId = parsearIdOrNull(termino);
+            pagina = estado == null
+                    ? reservaRepository.buscar(tenantId, reservaId, patron, pageable)
+                    : reservaRepository.buscarPorEstado(tenantId, estado, reservaId, patron, pageable);
+        }
+        return enriquecer(pagina, pageable);
+    }
+
+    /** Carga totales pagados y clientes en lote (3 queries en total) y arma la respuesta. */
+    private Page<ReservaResponse> enriquecer(Page<Reserva> pagina, Pageable pageable) {
         if (pagina.isEmpty()) {
             return Page.empty(pageable);
         }
@@ -147,6 +164,14 @@ public class ReservaService {
             String link = cliente == null ? null : notificacion.linkWhatsApp(cliente, r);
             return ReservaResponse.de(r, pagados.getOrDefault(r.getId(), 0), link);
         });
+    }
+
+    private static Long parsearIdOrNull(String s) {
+        try {
+            return Long.parseLong(s);
+        } catch (NumberFormatException e) {
+            return -1L;
+        }
     }
 
     /**
