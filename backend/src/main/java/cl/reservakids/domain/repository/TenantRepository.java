@@ -48,4 +48,7 @@ public interface TenantRepository extends JpaRepository<Tenant, Long> {
             GROUP BY t.id, t.slug, t.nombre, t.plan, t.estado, t.creadoEn
             ORDER BY t.creadoEn DESC""")
     List<NegocioAdminView> listarParaAdmin(@Param("estado") String estado, @Param("patron") String patron);
+
+    /** V34: Buscar tenant por canal de Google Calendar watch. */
+    Optional<Tenant> findByGoogleCalendarChannelIdAndGoogleCalendarResourceId(String channelId, String resourceId);
 }

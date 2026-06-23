@@ -107,7 +107,11 @@ public class ReservaService {
         reserva.setBloqueId(req.bloqueId());
         reserva.setNumNinos(req.numNinos());
         reserva.setComuna(sanitizer.sanitize(req.comuna()));
-        reserva.setComentarios(sanitizer.sanitize(construirComentarios(contactoDistinto, req.comentarios())));
+        // RF-05: extras (servicios adicionales) elegidos en el sitio público. Se validan contra
+        // el catálogo del negocio y se anexan a los comentarios para que el dueño los vea al cotizar.
+        String extrasTexto = resolverExtras(tenant.getId(), req.adicionalIds());
+        reserva.setComentarios(sanitizer.sanitize(
+                construirComentarios(contactoDistinto, extrasTexto, req.comentarios())));
         try {
             reserva = reservaRepository.saveAndFlush(reserva);
         } catch (DataIntegrityViolationException e) {
@@ -116,11 +120,30 @@ public class ReservaService {
                     "El bloque ya no está disponible. Por favor elige otra fecha cercana.");
         }
 
-        notificacion.nuevaSolicitud(tenant, reserva, cliente);
+        notificacion.nuevaSolicitud(tenant, reserva, cliente,
+                whatsapp.linkWhatsApp(cliente, reserva));
+        // Cierra el vacío de la espera: acuse inmediato al cliente y aviso al dueño por WhatsApp.
+        whatsapp.solicitudRecibida(tenant, reserva, cliente);
+        whatsapp.nuevaSolicitudDueno(tenant, reserva, cliente);
         audit.registrar(tenant.getId(), cliente.getId(), AuditEvent.ACTOR_CLIENTE,
                 AuditEvent.SOLICITUD_CREAR, "RESERVA", reserva.getId(),
                 "Solicitud pública: " + servicio.getNombre());
         return respuesta(reserva, cliente);
+    }
+
+    /**
+     * RF-05: valida los IDs de adicionales contra el catálogo del negocio (activos y marcados
+     * como adicionales) y devuelve sus nombres separados por coma, o {@code null} si no hay.
+     */
+    private String resolverExtras(Long tenantId, List<Long> adicionalIds) {
+        if (adicionalIds == null || adicionalIds.isEmpty()) {
+            return null;
+        }
+        List<String> nombres = servicioRepository.findAllById(adicionalIds).stream()
+                .filter(s -> tenantId.equals(s.getTenantId()) && s.isActivo() && s.isEsAdicional())
+                .map(Servicio::getNombre)
+                .toList();
+        return nombres.isEmpty() ? null : String.join(", ", nombres);
     }
 
     /**
@@ -161,7 +184,7 @@ public class ReservaService {
 
         return pagina.map(r -> {
             Cliente cliente = clientes.get(r.getClienteId());
-            String link = cliente == null ? null : notificacion.linkWhatsApp(cliente, r);
+            String link = cliente == null ? null : whatsapp.linkWhatsApp(cliente, r);
             return ReservaResponse.de(r, pagados.getOrDefault(r.getId(), 0), link);
         });
     }
@@ -197,7 +220,7 @@ public class ReservaService {
 
         return pagina.map(r -> {
             Cliente cliente = clientes.get(r.getClienteId());
-            String link = cliente == null ? null : notificacion.linkWhatsApp(cliente, r);
+            String link = cliente == null ? null : whatsapp.linkWhatsApp(cliente, r);
             return ReservaResponse.de(r, pagados.getOrDefault(r.getId(), 0), link);
         });
     }
@@ -291,6 +314,31 @@ public class ReservaService {
                 AuditEvent.RESERVA_CANCELAR, "RESERVA", reserva.getId(),
                 req != null ? req.motivo() : null);
         return respuesta(reserva, null);
+    }
+
+    /**
+     * V34: Cancelación automática por sincronización de calendario.
+     * Se invoca cuando Google Calendar notifica que el dueño eliminó el evento
+     * desde su iPhone/Calendar. Libera el bloque y limpia el googleEventId.
+     */
+    @Transactional
+    public void cancelarPorSincronizacionCalendar(Long tenantId, Long reservaId, String motivo) {
+        Reserva reserva = buscar(tenantId, reservaId);
+        EstadoBloque estadoBloque = reserva.getEstado() == EstadoReserva.CONFIRMADA
+                ? EstadoBloque.CONFIRMADO : EstadoBloque.EN_ESPERA;
+        reserva.transicionarA(EstadoReserva.CANCELADA);
+        if (motivo != null && !motivo.isBlank()) {
+            String previos = reserva.getComentarios() == null ? "" : reserva.getComentarios() + "\n";
+            reserva.setComentarios(previos + "[Calendar Sync] " + motivo);
+        }
+        if (reserva.getBloqueId() != null) {
+            bloqueRepository.transicionarEstado(
+                    reserva.getBloqueId(), tenantId, estadoBloque, EstadoBloque.DISPONIBLE);
+        }
+        reserva.setGoogleEventId(null);
+        audit.registrar(tenantId, 0L, "SISTEMA",
+                AuditEvent.RESERVA_CANCELAR, "RESERVA", reserva.getId(),
+                "Sincronización Google Calendar: " + motivo);
     }
 
     /** RF-07: registro de seña/abono (o devolución) y saldo pendiente. */
@@ -389,13 +437,21 @@ public class ReservaService {
         whatsapp.confirmacionReserva(tenant, cita, cliente, servicios);
     }
 
-    /** Antepone el contacto alternativo (si lo hay) a los comentarios del cliente. */
-    private static String construirComentarios(String contactoDistinto, String comentarios) {
-        if (contactoDistinto == null) {
-            return comentarios;
+    /** Antepone el contacto alternativo y los extras (si los hay) a los comentarios del cliente. */
+    private static String construirComentarios(String contactoDistinto, String extrasTexto, String comentarios) {
+        StringBuilder sb = new StringBuilder();
+        if (contactoDistinto != null) {
+            sb.append("[Contacto: ").append(contactoDistinto).append("]");
         }
-        String extra = comentarios == null ? "" : "\n" + comentarios;
-        return "[Contacto: %s]%s".formatted(contactoDistinto, extra);
+        if (extrasTexto != null && !extrasTexto.isBlank()) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append("[Extras solicitados: ").append(extrasTexto).append("]");
+        }
+        if (comentarios != null && !comentarios.isBlank()) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append(comentarios);
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 
     private Reserva buscar(Long tenantId, Long id) {
@@ -410,7 +466,7 @@ public class ReservaService {
         Cliente cliente = clienteConocido != null ? clienteConocido
                 : clienteRepository.findByIdAndTenantId(reserva.getClienteId(), reserva.getTenantId())
                         .orElse(null);
-        String link = cliente == null ? null : notificacion.linkWhatsApp(cliente, reserva);
+        String link = cliente == null ? null : whatsapp.linkWhatsApp(cliente, reserva);
         return ReservaResponse.de(reserva, pagado, link);
     }
 }

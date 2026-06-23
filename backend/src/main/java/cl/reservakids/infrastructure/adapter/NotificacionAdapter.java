@@ -2,88 +2,54 @@ package cl.reservakids.infrastructure.adapter;
 
 import cl.reservakids.application.usecase.CitaTexto;
 import cl.reservakids.application.usecase.NotificacionPort;
-import cl.reservakids.domain.model.Cliente;
-import cl.reservakids.domain.model.CuentaCliente;
-import cl.reservakids.domain.model.Reserva;
-import cl.reservakids.domain.model.ReservaServicio;
-import cl.reservakids.domain.model.Tenant;
-import cl.reservakids.domain.model.Usuario;
+import cl.reservakids.domain.model.*;
 import cl.reservakids.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * RF-08 — Sprint 5: email real al dueño por nueva solicitud + link wa.me pre-armado.
+ * Adaptador de notificaciones por email con plantillas HTML (Thymeleaf).
  *
- * El envío se registra como sincronización AFTER_COMMIT: si la transacción de la reserva
- * hace rollback (p. ej. el índice único anti doble-reserva), el email jamás sale —
- * sin esto el dueño recibiría correos de solicitudes que no existen.
- * Se ejecuta en un hilo aparte para no bloquear la respuesta HTTP, y un fallo de SMTP
- * solo se loguea: nunca rompe el flujo de reserva.
- *
- * Si no hay SMTP configurado (MAIL_HOST vacío), degrada a log.
+ * <p>Envío AFTER_COMMIT + async: si la transacción hace rollback, el email no sale.
+ * Sin SMTP configurado (MAIL_HOST vacío), degrada a log. El contador de fallos
+ * consecutivos alimenta el banner de alerta en el panel del dueño.</p>
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class NotificacionAdapter implements NotificacionPort {
 
-    /** ObjectProvider: JavaMailSender solo existe si spring.mail.host está definido. */
     private final ObjectProvider<JavaMailSender> mailSenderProvider;
+    private final TemplateEngine templateEngine;
     private final UsuarioRepository usuarioRepository;
 
-    /**
-     * Con `spring.mail.host: ${MAIL_HOST:}` la propiedad SIEMPRE existe (vacía), así que
-     * Spring Boot crea el JavaMailSender igual — y enviar con host "" lanza excepción en
-     * vez de degradar a log. Este guard hace verdadero el contrato "vacío = solo log".
-     */
     @Value("${spring.mail.host:}")
     private String mailHost;
 
     @Value("${app.mail.from}")
     private String remitente;
 
-    /** null cuando no hay SMTP configurado (host en blanco) — el llamador degrada a log. */
-    private JavaMailSender senderConfigurado() {
-        return (mailHost == null || mailHost.isBlank()) ? null : mailSenderProvider.getIfAvailable();
-    }
-
-    /** Base de los enlaces que viajan por email (reset de contraseña). */
     @Value("${app.frontend.url}")
     private String frontendUrl;
 
-    /**
-     * Falla #3 (revisión a 2 años): un fallo de SMTP solo se logueaba — si la API key expira
-     * o el correo cae a spam, el dueño deja de enterarse de solicitudes nuevas sin ninguna
-     * señal. Este contador alimenta GET /api/sistema/notificaciones y el aviso del panel.
-     */
     private final AtomicInteger fallosConsecutivos = new AtomicInteger();
-    // ultimoError se conserva SOLO para los logs del servidor: puede contener el email de
-    // destino de otro negocio o detalles del SMTP, así que NO viaja en la respuesta del
-    // endpoint (S2: /api/sistema/notificaciones lo ven los dueños — hasRole DUENO en
-    // SecurityConfig — pero igual no se expone: el contador basta para el aviso del panel).
     private volatile String ultimoError;
     private volatile OffsetDateTime ultimoFalloEn;
 
-    /**
-     * S2: el estado del canal SMTP es infraestructura compartida — el contador y la marca de
-     * tiempo del último fallo bastan para que el panel muestre el aviso. El mensaje de error
-     * crudo (ultimoError) queda fuera para no filtrar datos de otro tenant entre negocios.
-     */
     public record EstadoEnvios(int fallosConsecutivos, String ultimoFalloEn, boolean smtpConfigurado) {}
 
     public EstadoEnvios estadoEnvios() {
@@ -92,9 +58,11 @@ public class NotificacionAdapter implements NotificacionPort {
                 senderConfigurado() != null);
     }
 
+    // ── Port methods ──
+
     @Override
-    public void nuevaSolicitud(Tenant tenant, Reserva reserva, Cliente cliente) {
-        ejecutarTrasCommit(() -> enviar(tenant, reserva, cliente));
+    public void nuevaSolicitud(Tenant tenant, Reserva reserva, Cliente cliente, String linkWhatsApp) {
+        ejecutarTrasCommit(() -> enviarNuevaSolicitud(tenant, reserva, cliente, linkWhatsApp));
     }
 
     @Override
@@ -102,25 +70,178 @@ public class NotificacionAdapter implements NotificacionPort {
         ejecutarTrasCommit(() -> enviarCitaConfirmada(tenant, cita, cliente, servicios));
     }
 
-    /**
-     * Falla 1.3 (revisión a 5 años): email de recuperación de contraseña. AFTER_COMMIT
-     * como toda notificación: el token debe existir en BD antes de que el enlace llegue.
-     */
     @Override
     public void resetPassword(Usuario usuario, String tokenPlano) {
         ejecutarTrasCommit(() -> enviarReset(usuario, tokenPlano));
     }
 
-    /** Reset de contraseña para cuentas de cliente (apoderados): mismo patrón AFTER_COMMIT. */
     @Override
     public void resetPasswordCliente(CuentaCliente cuenta, String tokenPlano) {
         ejecutarTrasCommit(() -> enviarResetCliente(cuenta, tokenPlano));
     }
 
-    /** V27: magic link de login sin contraseña. AFTER_COMMIT como toda notificación. */
     @Override
     public void magicLink(Usuario usuario, String tokenPlano) {
         ejecutarTrasCommit(() -> enviarMagicLink(usuario, tokenPlano));
+    }
+
+    @Override
+    public void recordatorio(Tenant tenant, Reserva reserva, Cliente cliente, List<ReservaServicio> servicios) {
+        String destino = cliente.isAnonimizado() ? null : cliente.getEmail();
+        if (destino == null || destino.isBlank()) return;
+        ejecutarTrasCommit(() -> enviarRecordatorio(tenant, reserva, cliente, servicios));
+    }
+
+    @Override
+    public void staffBienvenida(Staff staff, String passwordPlana, String negocioNombre) {
+        ejecutarTrasCommit(() -> enviarStaffBienvenida(staff, passwordPlana, negocioNombre));
+    }
+
+    // ── Implementaciones de envío ──
+
+    private void enviarReset(Usuario usuario, String tokenPlano) {
+        String link = frontendUrl + "/reset#token=" + java.net.URLEncoder.encode(tokenPlano, java.nio.charset.StandardCharsets.UTF_8);
+        Context ctx = new Context();
+        ctx.setVariable("titulo", "Restablece tu contraseña");
+        ctx.setVariable("link", link);
+        enviarHtml("reset-password", "🔑 Restablece tu contraseña — ReservaKids", usuario.getEmail(), ctx);
+    }
+
+    private void enviarResetCliente(CuentaCliente cuenta, String tokenPlano) {
+        String link = frontendUrl + "/clientes/reset/confirmar#token="
+                + java.net.URLEncoder.encode(tokenPlano, java.nio.charset.StandardCharsets.UTF_8);
+        Context ctx = new Context();
+        ctx.setVariable("titulo", "Restablece tu contraseña");
+        ctx.setVariable("nombre", cuenta.getNombre());
+        ctx.setVariable("link", link);
+        enviarHtml("reset-password-cliente", "🔑 Restablece tu contraseña — ReservaKids", cuenta.getEmail(), ctx);
+    }
+
+    private void enviarMagicLink(Usuario usuario, String tokenPlano) {
+        String link = frontendUrl + "/magic#token=" + java.net.URLEncoder.encode(tokenPlano, java.nio.charset.StandardCharsets.UTF_8);
+        Context ctx = new Context();
+        ctx.setVariable("titulo", "Tu enlace para entrar");
+        ctx.setVariable("link", link);
+        enviarHtml("magic-link", "🔗 Tu enlace para entrar a ReservaKids", usuario.getEmail(), ctx);
+    }
+
+    private void enviarNuevaSolicitud(Tenant tenant, Reserva reserva, Cliente cliente, String linkWhatsApp) {
+        String destino = usuarioRepository.findFirstByTenantIdOrderById(tenant.getId())
+                .map(Usuario::getEmail).orElse(null);
+        if (destino == null) return;
+
+        Context ctx = new Context();
+        ctx.setVariable("titulo", "Nueva solicitud #" + reserva.getId());
+        ctx.setVariable("reservaId", reserva.getId());
+        ctx.setVariable("clienteNombre", cliente.getNombre());
+        ctx.setVariable("clienteTelefono", cliente.getTelefono());
+        ctx.setVariable("numNinos", reserva.getNumNinos() != null ? reserva.getNumNinos() : 0);
+        ctx.setVariable("comuna", reserva.getComuna());
+        ctx.setVariable("comentarios", reserva.getComentarios());
+        ctx.setVariable("panelUrl", frontendUrl + "/panel/solicitudes");
+        ctx.setVariable("linkWhatsApp", linkWhatsApp);
+        enviarHtml("nueva-solicitud",
+                "🎈 Nueva solicitud #" + reserva.getId() + " — " + tenant.getNombre(),
+                destino, ctx);
+    }
+
+    private void enviarCitaConfirmada(Tenant tenant, Reserva cita, Cliente cliente, List<ReservaServicio> servicios) {
+        String destino = cliente.isAnonimizado() ? null : cliente.getEmail();
+        if (destino == null) return;
+
+        List<Map<String, Object>> serviciosList = new ArrayList<>();
+        int total = 0;
+        if (servicios != null) {
+            for (ReservaServicio s : servicios) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("nombre", s.getNombre());
+                m.put("precio", s.getPrecioClp() != null ? s.getPrecioClp() : 0);
+                serviciosList.add(m);
+                total += s.getPrecioClp() != null ? s.getPrecioClp() : 0;
+            }
+        }
+
+        Context ctx = new Context();
+        ctx.setVariable("titulo", "Cita confirmada");
+        ctx.setVariable("clienteNombre", cliente.getNombre());
+        ctx.setVariable("negocioNombre", tenant.getNombre());
+        ctx.setVariable("fechaHora", CitaTexto.fechaHora(cita));
+        ctx.setVariable("servicios", serviciosList);
+        ctx.setVariable("total", total);
+        enviarHtml("cita-confirmada",
+                "✅ Cita confirmada en " + tenant.getNombre() + " — " + CitaTexto.fechaHora(cita),
+                destino, ctx);
+    }
+
+    private void enviarRecordatorio(Tenant tenant, Reserva reserva, Cliente cliente, List<ReservaServicio> servicios) {
+        String destino = cliente.getEmail();
+        if (destino == null) return;
+
+        List<Map<String, Object>> serviciosList = new ArrayList<>();
+        if (servicios != null) {
+            for (ReservaServicio s : servicios) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("nombre", s.getNombre());
+                serviciosList.add(m);
+            }
+        }
+        String fechaHora = reserva.getInicio() != null ? CitaTexto.fechaHora(reserva) : "el día agendado";
+
+        Context ctx = new Context();
+        ctx.setVariable("titulo", "Recordatorio");
+        ctx.setVariable("clienteNombre", cliente.getNombre());
+        ctx.setVariable("negocioNombre", tenant.getNombre());
+        ctx.setVariable("fechaHora", fechaHora);
+        ctx.setVariable("servicios", serviciosList);
+        enviarHtml("recordatorio",
+                "🔔 Recordatorio: tu reserva en " + tenant.getNombre() + " — " + fechaHora,
+                destino, ctx);
+    }
+
+    private void enviarStaffBienvenida(Staff staff, String passwordPlana, String negocioNombre) {
+        Context ctx = new Context();
+        ctx.setVariable("titulo", "Bienvenido al equipo");
+        ctx.setVariable("nombre", staff.getNombre());
+        ctx.setVariable("negocioNombre", negocioNombre);
+        ctx.setVariable("email", staff.getEmail());
+        ctx.setVariable("password", passwordPlana);
+        ctx.setVariable("rol", staff.getRol());
+        ctx.setVariable("loginUrl", frontendUrl + "/staff/entrar");
+        enviarHtml("staff-bienvenida",
+                "👋 Bienvenido a " + negocioNombre + " — ReservaKids",
+                staff.getEmail(), ctx);
+    }
+
+    // ── Motor de envío HTML ──
+
+    private void enviarHtml(String template, String subject, String to, Context ctx) {
+        try {
+            JavaMailSender sender = senderConfigurado();
+            if (sender == null) {
+                log.info("[Email STUB] {} → {} (template={})", subject, to, template);
+                return;
+            }
+            String html = templateEngine.process("email/base", ctx);
+            // Inyectar el fragmento de contenido
+            String contenido = templateEngine.process("email/" + template, ctx);
+            html = html.replace("<th:block th:insert=\"${contenido}\" />", contenido);
+
+            var mime = sender.createMimeMessage();
+            var helper = new MimeMessageHelper(mime, true, "UTF-8");
+            helper.setFrom(remitente);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            sender.send(mime);
+            fallosConsecutivos.set(0);
+            log.info("Email HTML enviado: {} → {}", subject, to);
+        } catch (Exception e) {
+            fallosConsecutivos.incrementAndGet();
+            ultimoError = e.getMessage();
+            ultimoFalloEn = OffsetDateTime.now();
+            log.error("Fallo enviando email '{}' a {} ({} consecutivos): {}",
+                    subject, to, fallosConsecutivos.get(), e.getMessage());
+        }
     }
 
     private void ejecutarTrasCommit(Runnable envio) {
@@ -136,263 +257,7 @@ public class NotificacionAdapter implements NotificacionPort {
         }
     }
 
-    private void enviarReset(Usuario usuario, String tokenPlano) {
-        String link = frontendUrl + "/reset#token=" + URLEncoder.encode(tokenPlano, StandardCharsets.UTF_8);
-        try {
-            JavaMailSender sender = senderConfigurado();
-            if (sender == null) {
-                // Sin SMTP el log es el único canal (MVP): el operador puede pasar el enlace
-                // a mano. Con SMTP configurado el enlace NUNCA se loguea (es una credencial).
-                log.info("Reset de contraseña solicitado para {} [email no configurado]: {}",
-                        usuario.getEmail(), link);
-                return;
-            }
-            SimpleMailMessage mensaje = new SimpleMailMessage();
-            mensaje.setFrom(remitente);
-            mensaje.setTo(usuario.getEmail());
-            mensaje.setSubject("🔑 Restablece tu contraseña — ReservaKids");
-            mensaje.setText("""
-                    Recibimos una solicitud para restablecer tu contraseña.
-
-                    Crea una nueva aquí (el enlace vence en 30 minutos y sirve UNA vez):
-                    %s
-
-                    Si no lo pediste, ignora este correo: tu contraseña sigue igual.
-                    """.formatted(link));
-            sender.send(mensaje);
-            fallosConsecutivos.set(0);
-            log.info("Email de reset de contraseña enviado a {}", usuario.getEmail());
-        } catch (Exception e) {
-            fallosConsecutivos.incrementAndGet();
-            ultimoError = e.getMessage();
-            ultimoFalloEn = OffsetDateTime.now();
-            log.error("Fallo enviando reset de contraseña a {} ({} consecutivos): {}",
-                    usuario.getEmail(), fallosConsecutivos.get(), e.getMessage());
-        }
-    }
-
-    private void enviarResetCliente(CuentaCliente cuenta, String tokenPlano) {
-        String link = frontendUrl + "/clientes/reset/confirmar#token="
-                + URLEncoder.encode(tokenPlano, StandardCharsets.UTF_8);
-        try {
-            JavaMailSender sender = senderConfigurado();
-            if (sender == null) {
-                // Sin SMTP el log es el único canal (MVP). Con SMTP el enlace NUNCA se loguea.
-                log.info("Reset de contraseña (cliente) solicitado para {} [email no configurado]: {}",
-                        cuenta.getEmail(), link);
-                return;
-            }
-            SimpleMailMessage mensaje = new SimpleMailMessage();
-            mensaje.setFrom(remitente);
-            mensaje.setTo(cuenta.getEmail());
-            mensaje.setSubject("🔑 Restablece tu contraseña — ReservaKids");
-            mensaje.setText("""
-                    Hola %s, recibimos una solicitud para restablecer tu contraseña.
-
-                    Crea una nueva aquí (el enlace vence en 30 minutos y sirve UNA vez):
-                    %s
-
-                    Si no lo pediste, ignora este correo: tu contraseña sigue igual.
-                    """.formatted(cuenta.getNombre(), link));
-            sender.send(mensaje);
-            fallosConsecutivos.set(0);
-            log.info("Email de reset de contraseña (cliente) enviado a {}", cuenta.getEmail());
-        } catch (Exception e) {
-            fallosConsecutivos.incrementAndGet();
-            ultimoError = e.getMessage();
-            ultimoFalloEn = OffsetDateTime.now();
-            log.error("Fallo enviando reset de contraseña (cliente) a {} ({} consecutivos): {}",
-                    cuenta.getEmail(), fallosConsecutivos.get(), e.getMessage());
-        }
-    }
-
-    /** V27: envía el magic link de login sin contraseña al email del dueño. */
-    private void enviarMagicLink(Usuario usuario, String tokenPlano) {
-        String link = frontendUrl + "/magic#token=" + URLEncoder.encode(tokenPlano, StandardCharsets.UTF_8);
-        try {
-            JavaMailSender sender = senderConfigurado();
-            if (sender == null) {
-                log.info("Magic link solicitado para {} [email no configurado]: {}", usuario.getEmail(), link);
-                return;
-            }
-            SimpleMailMessage mensaje = new SimpleMailMessage();
-            mensaje.setFrom(remitente);
-            mensaje.setTo(usuario.getEmail());
-            mensaje.setSubject("🔗 Tu enlace para entrar a ReservaKids");
-            mensaje.setText("""
-                    ¡Hola! Pediste entrar a tu panel sin contraseña.
-
-                    Toca este enlace y entrarás directo (sirve UNA vez y vence en 10 minutos):
-                    %s
-
-                    Si no lo pediste, ignora este correo: nadie entrará solo con tenerlo.
-                    """.formatted(link));
-            sender.send(mensaje);
-            fallosConsecutivos.set(0);
-            log.info("Magic link enviado a {}", usuario.getEmail());
-        } catch (Exception e) {
-            fallosConsecutivos.incrementAndGet();
-            ultimoError = e.getMessage();
-            ultimoFalloEn = OffsetDateTime.now();
-            log.error("Fallo enviando magic link a {} ({} consecutivos): {}",
-                    usuario.getEmail(), fallosConsecutivos.get(), e.getMessage());
-        }
-    }
-
-    private void enviar(Tenant tenant, Reserva reserva, Cliente cliente) {
-        try {
-            String destino = usuarioRepository.findFirstByTenantIdOrderById(tenant.getId())
-                    .map(u -> u.getEmail()).orElse(null);
-            JavaMailSender sender = senderConfigurado();
-
-            if (sender == null || destino == null) {
-                log.info("Nueva solicitud #{} para tenant '{}' — cliente {} ({}) [email no configurado, solo log]",
-                        reserva.getId(), tenant.getSlug(), cliente.getNombre(), cliente.getTelefono());
-                return;
-            }
-
-            SimpleMailMessage mensaje = new SimpleMailMessage();
-            mensaje.setFrom(remitente);
-            mensaje.setTo(destino);
-            mensaje.setSubject("🎈 Nueva solicitud de reserva #%d — %s"
-                    .formatted(reserva.getId(), tenant.getNombre()));
-            mensaje.setText("""
-                    ¡Tienes una nueva solicitud de reserva!
-
-                    Solicitud: #%d
-                    Cliente: %s
-                    Teléfono: %s
-                    Niños: %s · Comuna: %s
-                    Comentarios: %s
-
-                    Responde por WhatsApp: %s
-
-                    Tienes 48 horas antes de que la solicitud expire automáticamente.
-                    Gestiona la solicitud en tu panel de ReservaKids.
-                    """.formatted(
-                    reserva.getId(), cliente.getNombre(), cliente.getTelefono(),
-                    reserva.getNumNinos() == null ? "—" : reserva.getNumNinos(),
-                    reserva.getComuna() == null ? "—" : reserva.getComuna(),
-                    reserva.getComentarios() == null ? "—" : reserva.getComentarios(),
-                    linkWhatsApp(cliente, reserva)));
-            sender.send(mensaje);
-            fallosConsecutivos.set(0); // el canal volvió a funcionar
-            log.info("Email de nueva solicitud #{} enviado a {}", reserva.getId(), destino);
-        } catch (Exception e) {
-            fallosConsecutivos.incrementAndGet();
-            ultimoError = e.getMessage();
-            ultimoFalloEn = OffsetDateTime.now();
-            log.error("Fallo enviando email de solicitud #{} ({} consecutivos): {}",
-                    reserva.getId(), fallosConsecutivos.get(), e.getMessage());
-        }
-    }
-
-    private void enviarCitaConfirmada(Tenant tenant, Reserva cita, Cliente cliente, List<ReservaServicio> servicios) {
-        try {
-            String destino = cliente.isAnonimizado() ? null : cliente.getEmail();
-            JavaMailSender sender = senderConfigurado();
-            if (sender == null || destino == null) {
-                log.info("Cita #{} confirmada en '{}' para {} el {} [email no configurado, solo log]",
-                        cita.getId(), tenant.getSlug(), cliente.getNombre(), CitaTexto.fechaHora(cita));
-                return;
-            }
-            SimpleMailMessage mensaje = new SimpleMailMessage();
-            mensaje.setFrom(remitente);
-            mensaje.setTo(destino);
-            mensaje.setSubject("✅ Cita confirmada en %s — %s"
-                    .formatted(tenant.getNombre(), CitaTexto.fechaHora(cita)));
-            mensaje.setText("""
-                    ¡Hola %s! Tu pago fue aprobado y tu hora quedó agendada. ✅
-
-                    %s
-                    %sTotal pagado: %s
-
-                    Te enviaremos un recordatorio antes de tu cita. ¡Te esperamos!
-                    """.formatted(
-                    cliente.getNombre(),
-                    CitaTexto.fechaHora(cita),
-                    CitaTexto.listaServicios(servicios),
-                    CitaTexto.clp(CitaTexto.total(servicios))));
-            sender.send(mensaje);
-            fallosConsecutivos.set(0);
-            log.info("Email de cita confirmada #{} enviado a {}", cita.getId(), destino);
-        } catch (Exception e) {
-            fallosConsecutivos.incrementAndGet();
-            ultimoError = e.getMessage();
-            ultimoFalloEn = OffsetDateTime.now();
-            log.error("Fallo enviando confirmación de cita #{} ({} consecutivos): {}",
-                    cita.getId(), fallosConsecutivos.get(), e.getMessage());
-        }
-    }
-
-    @Override
-    public void recordatorio(Tenant tenant, Reserva reserva, Cliente cliente, List<ReservaServicio> servicios) {
-        String destino = cliente.isAnonimizado() ? null : cliente.getEmail();
-        if (destino == null || destino.isBlank()) {
-            return;
-        }
-        Runnable envio = () -> {
-            try {
-                JavaMailSender sender = senderConfigurado();
-                if (sender == null) {
-                    log.info("Recordatorio #{} para '{}' en '{}' [email no configurado, solo log]",
-                            reserva.getId(), cliente.getNombre(), tenant.getSlug());
-                    return;
-                }
-                String hora = reserva.getInicio() != null
-                        ? CitaTexto.fechaHora(reserva)
-                        : "el día de hoy";
-                String lista;
-                if (servicios != null && !servicios.isEmpty()) {
-                    lista = CitaTexto.listaServicios(servicios);
-                } else {
-                    lista = "Tu reserva de cumpleaños";
-                }
-                SimpleMailMessage mensaje = new SimpleMailMessage();
-                mensaje.setFrom(remitente);
-                mensaje.setTo(destino);
-                mensaje.setSubject("\uD83D\uDD14 Recordatorio: tu reserva en %s — %s"
-                        .formatted(tenant.getNombre(), hora));
-                mensaje.setText("""
-                        ¡Hola %s! \uD83C\uDF89
-                        
-                        Mañana tienes agendado en %s:
-                        
-                        %s\u23F0 Hora: %s
-                        
-                        Recuerda llegar puntual. ¡Te esperamos!
-                        """.formatted(
-                        cliente.getNombre(),
-                        tenant.getNombre(),
-                        lista,
-                        hora));
-                sender.send(mensaje);
-                fallosConsecutivos.set(0);
-                log.info("Recordatorio #{} enviado a {}", reserva.getId(), destino);
-            } catch (Exception e) {
-                fallosConsecutivos.incrementAndGet();
-                ultimoError = e.getMessage();
-                ultimoFalloEn = OffsetDateTime.now();
-                log.error("Fallo enviando recordatorio #{} ({} consecutivos): {}",
-                        reserva.getId(), fallosConsecutivos.get(), e.getMessage());
-            }
-        };
-        ejecutarTrasCommit(envio);
-    }
-
-    @Override
-    public String linkWhatsApp(Cliente cliente, Reserva reserva) {
-        if (cliente.isAnonimizado()) {
-            return null; // su placeholder no es un teléfono (Ley 21.719)
-        }
-        String telefono = cliente.getTelefono().replaceAll("[^0-9]", "");
-        String mensaje = "Hola %s! Te escribo por tu solicitud de reserva #%d 🎉"
-                .formatted(cliente.getNombre(), reserva.getId());
-                
-        if (reserva.getEstado() == cl.reservakids.domain.model.EstadoReserva.COTIZADA && reserva.getMpInitPoint() != null) {
-            mensaje += "\n\nPuedes confirmar tu reserva de $" + reserva.getSeniaClp() + " directamente aquí de forma segura con Mercado Pago:\n" + reserva.getMpInitPoint();
-        }
-        
-        return "https://wa.me/" + telefono + "?text=" + URLEncoder.encode(mensaje, StandardCharsets.UTF_8);
+    private JavaMailSender senderConfigurado() {
+        return (mailHost == null || mailHost.isBlank()) ? null : mailSenderProvider.getIfAvailable();
     }
 }

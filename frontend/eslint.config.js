@@ -33,6 +33,19 @@ export default [
   },
   {
     files: ['**/*.{js,vue}'],
+    languageOptions: {
+      globals: {
+        definePageMeta: 'readonly',
+        defineNuxtRouteMiddleware: 'readonly',
+        navigateTo: 'readonly',
+        useRouter: 'readonly',
+        useRoute: 'readonly',
+        useRuntimeConfig: 'readonly',
+        useRequestURL: 'readonly',
+        useNuxtApp: 'readonly',
+        process: 'readonly',
+      },
+    },
     rules: {
       'vue/multi-word-component-names': 'off',
       'vue/no-v-html': 'error',

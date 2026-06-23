@@ -7,6 +7,7 @@ import cl.reservakids.domain.model.EstadoReserva;
 import cl.reservakids.domain.repository.ClienteRepository;
 import cl.reservakids.domain.repository.CuentaClienteRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
+import cl.reservakids.infrastructure.oauth2.OAuth2Service;
 import cl.reservakids.infrastructure.security.AuthPrincipal;
 import cl.reservakids.infrastructure.security.RefreshCookieService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,6 +28,7 @@ public class ClienteAuthController {
 
     private final ClienteAuthService clienteAuthService;
     private final RefreshCookieService refreshCookieService;
+    private final OAuth2Service oauth2Service;
     private final CuentaClienteRepository cuentaClienteRepository;
     private final ClienteRepository clienteRepository;
     private final ReservaRepository reservaRepository;
@@ -134,6 +136,29 @@ public class ClienteAuthController {
     public ResponseEntity<Void> confirmarReset(@Valid @RequestBody AuthDtos.ResetConfirmacionRequest req) {
         clienteAuthService.confirmarResetPassword(req.token(), req.nuevaPassword());
         return ResponseEntity.noContent().build();
+    }
+
+    /** OAuth2/SSO: obtiene la URL de autorización para el proveedor indicado. */
+    @GetMapping("/oauth2/{provider}/authorize")
+    public ResponseEntity<AuthDtos.OAuth2AuthorizeResponse> oauth2Authorize(
+            @PathVariable String provider) {
+        String url = oauth2Service.buildAuthorizeUrl(provider, "cliente");
+        if (url == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(new AuthDtos.OAuth2AuthorizeResponse(url));
+    }
+
+    /** OAuth2/SSO: canjea el código del proveedor por tokens de cliente. */
+    @PostMapping("/oauth2/{provider}")
+    public ClienteTokenResponse oauth2Login(
+            @PathVariable String provider,
+            @Valid @RequestBody AuthDtos.OAuth2Request req,
+            HttpServletResponse res) {
+        oauth2Service.verifyState(req.state(), "cliente", provider);
+        ClienteTokenResponse tokens = clienteAuthService.oauth2Login(provider, req.code(), req.redirectUri());
+        refreshCookieService.setear(res, RefreshCookieService.COOKIE_CLIENTE, tokens.refreshToken());
+        return sinRefresh(tokens);
     }
 
     /** Refresh token: prioriza la cookie HttpOnly; cae al body para clientes no-navegador. */
