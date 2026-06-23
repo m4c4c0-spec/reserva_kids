@@ -1,7 +1,9 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useClienteAuthStore } from '../stores/clienteAuth'
+import { esRutValido, esTelefonoChilenoValido, formatearRut } from '../composables/validators'
+import axios from 'axios'
 import bgV2 from '../assets/login-bg-v2.webp'
 import charBalloon from '../assets/char-balloon.png'
 import charHat from '../assets/char-hat.png'
@@ -19,9 +21,34 @@ const telefono = ref('')
 const password = ref('')
 const error = ref('')
 const cargando = ref(false)
+const resetEnviado = ref(false)
+const enviandoReset = ref(false)
+
+const withCreds = { withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
+
+// Validación inline: solo se muestra una vez que el usuario escribió algo (no en vacío).
+const rutInvalido = computed(() => modo.value === 'registro' && !!rut.value && !esRutValido(rut.value))
+const telInvalido = computed(
+  () => modo.value === 'registro' && !!telefono.value && !esTelefonoChilenoValido(telefono.value),
+)
+const registroInvalido = computed(
+  () => modo.value === 'registro' && (!esRutValido(rut.value) || !esTelefonoChilenoValido(telefono.value)),
+)
+
+function formatearRutEnBlur() {
+  if (rut.value && esRutValido(rut.value)) rut.value = formatearRut(rut.value)
+}
 
 async function enviar() {
   error.value = ''
+  resetEnviado.value = false
+  if (registroInvalido.value) {
+    error.value = !esRutValido(rut.value)
+      ? 'Revisa tu RUT: parece incompleto o el dígito verificador no calza.'
+      : 'Revisa tu celular: debe ser un número chileno válido (9 dígitos).'
+    return
+  }
   cargando.value = true
   try {
     if (modo.value === 'login') {
@@ -40,6 +67,19 @@ async function enviar() {
     error.value = e.response?.data?.message || 'Error de conexión'
   } finally {
     cargando.value = false
+  }
+}
+
+async function recuperarContrasena() {
+  enviandoReset.value = true
+  try {
+    await axios.post(`${baseURL}/cliente-auth/reset/solicitar`, { email: email.value }, withCreds)
+    resetEnviado.value = true
+    error.value = ''
+  } catch {
+    resetEnviado.value = false
+  } finally {
+    enviandoReset.value = false
   }
 }
 </script>
@@ -104,10 +144,17 @@ async function enviar() {
                 required
                 maxlength="15"
                 placeholder="12.345.678-5"
+                :aria-invalid="rutInvalido"
                 class="input-festivo input-festivo--con-icono !py-3"
+                @blur="formatearRutEnBlur"
               />
             </div>
-            <p class="text-xs text-on-surface-variant mt-1">Verificamos tu identidad. No compartimos tus datos.</p>
+            <p v-if="rutInvalido" class="text-xs font-semibold text-error mt-1">
+              RUT inválido: revisa el dígito verificador.
+            </p>
+            <p v-else class="text-xs text-on-surface-variant mt-1">
+              Verificamos tu identidad. No compartimos tus datos.
+            </p>
           </div>
 
           <div>
@@ -142,10 +189,14 @@ async function enviar() {
                 required
                 maxlength="20"
                 placeholder="+56 9 1234 5678"
+                :aria-invalid="telInvalido"
                 class="input-festivo input-festivo--con-icono !py-3"
               />
             </div>
-            <p class="text-xs text-on-surface-variant mt-1">Te confirmamos y recordamos tu hora por WhatsApp.</p>
+            <p v-if="telInvalido" class="text-xs font-semibold text-error mt-1">
+              Celular inválido: debe tener 9 dígitos y partir en 9.
+            </p>
+            <p v-else class="text-xs text-on-surface-variant mt-1">Te confirmamos y recordamos tu hora por WhatsApp.</p>
           </div>
 
           <div>
@@ -169,11 +220,31 @@ async function enviar() {
 
           <ErrorBanner :mensaje="error" />
 
+          <div v-if="resetEnviado" class="rounded-xl bg-tertiary-container/30 border border-tertiary-container p-4">
+            <p class="text-sm font-bold text-on-tertiary-container mb-1">Link enviado</p>
+            <p class="text-xs text-on-tertiary-container">
+              Revisa tu correo <strong>{{ email }}</strong
+              >. Entra con el enlace y cambia tu contraseña.
+            </p>
+          </div>
+
+          <div v-if="!resetEnviado" class="text-center">
+            <button
+              type="button"
+              class="text-sm font-medium text-on-surface-variant hover:text-secondary transition-colors disabled:opacity-30"
+              :disabled="!email || enviandoReset"
+              @click="recuperarContrasena()"
+            >
+              <span class="material-symbols-outlined text-[16px] align-middle mr-1">mail</span>
+              {{ enviandoReset ? 'Enviando…' : '¿Olvidaste tu contraseña?' }}
+            </button>
+          </div>
+
           <BaseButton
             variante="primario"
             type="submit"
             :cargando="cargando"
-            :deshabilitado="cargando"
+            :deshabilitado="cargando || registroInvalido"
             class="w-full py-3"
           >
             {{ cargando ? 'Enviando…' : modo === 'login' ? 'Iniciar Sesión' : 'Crear cuenta' }}
