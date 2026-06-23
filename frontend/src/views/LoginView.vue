@@ -1,8 +1,9 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useConfetti } from '../composables/useConfetti'
+import axios from 'axios'
 import charBalloon from '../assets/char-balloon.png'
 import charCake from '../assets/char-cake.png'
 import bgV2 from '../assets/login-bg-v2.webp'
@@ -24,6 +25,13 @@ const cargando = ref(false)
 // V27: magic link — login sin contraseña (para adultos mayores que olvidan/resetean claves)
 const magicEnviado = ref(false)
 
+const withCreds = { withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
+
+const emailYaRegistrado = computed(() =>
+  modo.value === 'registro' && error.value === 'El email ya está registrado',
+)
+
 async function pedirMagicLink() {
   error.value = ''
   if (!email.value) {
@@ -39,6 +47,21 @@ async function pedirMagicLink() {
   } finally {
     cargando.value = false
   }
+}
+
+async function recuperarAcceso() {
+  cargando.value = true
+  error.value = ''
+  try {
+    await axios.post(`${baseURL}/auth/reset/solicitar`, { email: email.value }, withCreds)
+  } catch {
+    // 204 always, ignore
+  } finally {
+    cargando.value = false
+  }
+  modo.value = 'login'
+  error.value = ''
+  magicEnviado.value = true
 }
 
 const reaccion = ref('')
@@ -195,6 +218,23 @@ async function enviar() {
           </div>
 
           <ErrorBanner :mensaje="error" />
+
+          <template v-if="emailYaRegistrado">
+            <div class="rounded-xl bg-secondary-container/20 border border-secondary-container p-4 text-center">
+              <p class="text-sm font-medium text-on-secondary-container mb-3">
+                ¿El negocio ya está creado y olvidaste la contraseña?
+              </p>
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary-container text-on-secondary-container font-bold text-sm hover:bg-secondary-container/70 transition-colors"
+                :disabled="cargando"
+                @click="recuperarAcceso()"
+              >
+                <span class="material-symbols-outlined text-[18px]">mail</span>
+                Recuperar acceso
+              </button>
+            </div>
+          </template>
 
           <div class="pt-2">
             <BaseButton
