@@ -5,7 +5,8 @@ import globals from 'globals'
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    // Salidas generadas por Nuxt/Nitro y dependencias: no son código fuente.
+    ignores: ['dist/**', 'node_modules/**', '.nuxt/**', '.output/**', 'public/**'],
   },
   js.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
@@ -35,14 +36,39 @@ export default [
     files: ['**/*.{js,vue}'],
     languageOptions: {
       globals: {
+        // ── Auto-imports de Nuxt ──
         definePageMeta: 'readonly',
         defineNuxtRouteMiddleware: 'readonly',
+        defineNuxtPlugin: 'readonly',
         navigateTo: 'readonly',
         useRouter: 'readonly',
         useRoute: 'readonly',
         useRuntimeConfig: 'readonly',
         useRequestURL: 'readonly',
         useNuxtApp: 'readonly',
+        useHead: 'readonly',
+        useSeoMeta: 'readonly',
+        useState: 'readonly',
+        useCookie: 'readonly',
+        // ── Auto-imports de Vue (reactividad + ciclo de vida) ──
+        ref: 'readonly',
+        reactive: 'readonly',
+        computed: 'readonly',
+        watch: 'readonly',
+        watchEffect: 'readonly',
+        nextTick: 'readonly',
+        onMounted: 'readonly',
+        onUnmounted: 'readonly',
+        onBeforeMount: 'readonly',
+        onBeforeUnmount: 'readonly',
+        // ── Stores Pinia (auto-importados desde src/stores por @pinia/nuxt) ──
+        useAuthStore: 'readonly',
+        useClienteAuthStore: 'readonly',
+        useAdminAuthStore: 'readonly',
+        useStaffStore: 'readonly',
+        // ── Composables propios auto-importados desde src/composables ──
+        instalar: 'readonly',
+        puedeInstalar: 'readonly',
         process: 'readonly',
       },
     },

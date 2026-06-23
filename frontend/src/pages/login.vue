@@ -56,6 +56,7 @@ async function recuperarAcceso() {
   try {
     await axios.post(`${baseURL}/auth/reset/solicitar`, { email: email.value }, withCreds)
   } catch {
+    /* Anti-enumeración: mostramos éxito igual, sin revelar si el email existe. */
   } finally {
     cargando.value = false
   }
