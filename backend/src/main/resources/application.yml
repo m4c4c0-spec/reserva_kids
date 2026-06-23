@@ -36,23 +36,39 @@ server:
   port: ${PORT:8080}
   # RNF-07 disponibilidad: graceful shutdown para no perder requests en vuelo al detener
   shutdown: graceful
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain,text/css,application/javascript,text/javascript
+    min-response-size: 1024
   error:
     include-stacktrace: never
     whitelabel:
       enabled: false    # Página de error por defecto de Spring = filtración de info
 
-# Falla #8 (2 años): solo /actuator/health, sin detalles (es público para el healthcheck)
+# Falla #8 (2 años): /actuator/health (público, healthcheck) + observabilidad:
+# /actuator/prometheus (métricas) y export de trazas OTLP al Collector.
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus,metrics
   health:
     mail:
       # Un SMTP caído NO debe marcar la API entera como unhealthy (y con MAIL_HOST
       # vacío el indicador fallaba siempre). El canal de email ya tiene su propia
       # señal: fallosConsecutivos → GET /api/sistema/notificaciones → aviso del panel.
       enabled: false
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_RATE:0.1}
+  otlp:
+    tracing:
+      # Endpoint OTLP/HTTP del OpenTelemetry Collector. En Docker: http://otel-collector:4318/v1/traces
+      endpoint: ${OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    tags:
+      # Etiqueta todas las métricas con el servicio para separarlas en Prometheus/Grafana.
+      application: ${spring.application.name:reservakids-api}
 
 app:
   jwt:
@@ -112,6 +128,13 @@ app:
     enabled: ${WHATSAPP_ENABLED:false}
     phone-id: ${WHATSAPP_PHONE_ID:}
     token: ${WHATSAPP_TOKEN:}
+  alertas:
+    # Alertas proactivas a Operaciones. Sin SLACK_WEBHOOK_URL se loguea como stub.
+    slack:
+      webhook-url: ${SLACK_WEBHOOK_URL:}
+    webhook:
+      # Fallos consecutivos del webhook de pagos antes de gatillar la alerta crítica.
+      umbral: ${ALERTAS_WEBHOOK_UMBRAL:3}
   clientes:
     # Falla #4 (2 años, Ley 21.719): retención de datos personales por inactividad
     retencion-meses: ${RETENCION_CLIENTE_MESES:24}
@@ -151,3 +174,22 @@ app:
     cred-key: ${CRED_ENC_KEY:}
     # RNF-02: rounds de bcrypt. OWASP 2023+ recomienda 12; en hardware más lento se puede bajar.
     bcrypt-strength: ${BCRYPT_STRENGTH:12}
+  oauth2:
+    google:
+      client-id: ${OAUTH2_GOOGLE_CLIENT_ID:}
+      client-secret: ${OAUTH2_GOOGLE_CLIENT_SECRET:}
+    microsoft:
+      client-id: ${OAUTH2_MICROSOFT_CLIENT_ID:}
+      client-secret: ${OAUTH2_MICROSOFT_CLIENT_SECRET:}
+    apple:
+      client-id: ${OAUTH2_APPLE_CLIENT_ID:}
+      team-id: ${OAUTH2_APPLE_TEAM_ID:}
+      key-id: ${OAUTH2_APPLE_KEY_ID:}
+      private-key: ${OAUTH2_APPLE_PRIVATE_KEY:}
+  single-tenant:
+    # Provisión automática de un Tenant exclusivo al iniciar el contenedor (BD vacía)
+    enabled: ${RESERVAKIDS_SINGLE_TENANT_ENABLED:false}
+    slug: ${RESERVAKIDS_SINGLE_TENANT_SLUG:}
+    nombre: ${RESERVAKIDS_SINGLE_TENANT_NOMBRE:}
+    admin-email: ${RESERVAKIDS_SINGLE_TENANT_ADMIN_EMAIL:}
+    admin-password: ${RESERVAKIDS_SINGLE_TENANT_ADMIN_PASSWORD:}

@@ -4,6 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.access.PermissionEvaluator;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -19,11 +23,14 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final IdempotencyFilter idempotencyFilter;
+    private final ContentTypeFilter contentTypeFilter;
     private final MdcFilter mdcFilter;
     private final SecurityHeadersFilter securityHeadersFilter;
     private final CsrfFilter csrfFilter;
@@ -37,6 +44,13 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(bcryptStrength); // RNF-02: bcrypt ≥12 rounds (OWASP 2023+)
+    }
+
+    @Bean
+    public MethodSecurityExpressionHandler methodSecurityExpressionHandler(PermissionEvaluator evaluator) {
+        DefaultMethodSecurityExpressionHandler handler = new DefaultMethodSecurityExpressionHandler();
+        handler.setPermissionEvaluator(evaluator);
+        return handler;
     }
 
     @Bean
@@ -55,20 +69,21 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Falla #8 (2 años): health sin auth para Docker/uptime monitor (sin detalles)
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers("/api/public/**", "/api/auth/**", "/api/cliente-auth/**", "/api/admin-auth/**").permitAll()
-                        // Consola de plataforma (gobierno de negocios cross-tenant) — rol ADMIN.
+                        .requestMatchers("/api/public/**", "/api/auth/**", "/api/cliente-auth/**", "/api/admin-auth/**", "/api/staff/login").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        // Área de cliente (apoderado): directorio de negocios — rol CLIENTE.
                         .requestMatchers("/api/cliente/**").hasRole("CLIENTE")
-                        // Resto del panel (reservas, servicios, calendario, tenant…): solo el dueño.
-                        // Antes era authenticated() a secas: un token de cliente podía tocar
-                        // endpoints de negocio (con tenantId null → errores). Ahora exige DUENO.
+                        // Staff: acceso por URL como defense-in-depth + @PreAuthorize granular en cada endpoint
+                        .requestMatchers("/api/staff/**").hasRole("STAFF")
+                        // Panel del negocio: dueño siempre tiene acceso total. Staff con permiso
+                        // accede mediante @PreAuthorize("hasPermission(...)") en cada controlador.
+                        .requestMatchers("/api/roles/**", "/api/personal/**").hasAnyRole("DUENO", "STAFF")
                         .requestMatchers("/api/**").hasRole("DUENO")
                         .anyRequest().denyAll())
                 .addFilterBefore(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(contentTypeFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(csrfFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(idempotencyFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(mdcFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
@@ -82,8 +97,6 @@ public class SecurityConfig {
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
-        // Refresh token en cookie HttpOnly: el navegador la envía solo si el CORS admite
-        // credenciales y el origen es exacto (no wildcard). Mismo origen (proxy) no lo usa.
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

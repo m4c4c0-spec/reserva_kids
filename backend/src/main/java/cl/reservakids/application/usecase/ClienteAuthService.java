@@ -10,6 +10,8 @@ import cl.reservakids.domain.model.RutValidator;
 import cl.reservakids.domain.repository.CuentaClienteRepository;
 import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenClienteRepository;
+import cl.reservakids.infrastructure.oauth2.OAuth2Service;
+import cl.reservakids.infrastructure.oauth2.OAuth2UserInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -43,6 +45,7 @@ public class ClienteAuthService {
     private final TokenPort tokenPort;
     private final NotificacionPort notificacion;
     private final AuthEventPort authEvent;
+    private final OAuth2Service oauth2Service;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.jwt.refresh-days}")
@@ -96,6 +99,13 @@ public class ClienteAuthService {
                             AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Email no registrado");
                     return new BadCredentialsException("Credenciales inválidas");
                 });
+        if (cuenta.isOauth() && cuenta.getPasswordHash() == null) {
+            authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
+                    AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Cuenta OAuth sin contraseña");
+            throw new BadCredentialsException(
+                    "Esta cuenta usa inicio de sesión con " + cuenta.getOauthProvider()
+                    + ". Por favor inicia sesión con ese proveedor.");
+        }
         if (!passwordEncoder.matches(req.password(), cuenta.getPasswordHash())) {
             authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
                     AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Contraseña incorrecta");
@@ -212,6 +222,45 @@ public class ClienteAuthService {
         byte[] bytes = new byte[48];
         secureRandom.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    @Transactional
+    public ClienteTokenResponse oauth2Login(String provider, String code, String redirectUri) {
+        OAuth2UserInfo info = oauth2Service.verify(provider, code, redirectUri);
+        String email = normalizarEmail(info.email());
+
+        var existingByProvider = cuentaClienteRepository.findByOauthProviderAndOauthProviderId(
+                info.provider(), info.providerId());
+        if (existingByProvider.isPresent()) {
+            CuentaCliente cuenta = existingByProvider.get();
+            authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
+                    AuthEvent.LOGIN, AuthEvent.SUCCESS, "OAuth2 " + provider);
+            return emitirTokens(cuenta);
+        }
+
+        var existingByEmail = cuentaClienteRepository.findByEmail(email);
+        if (existingByEmail.isPresent()) {
+            CuentaCliente cuenta = existingByEmail.get();
+            cuenta.setOauthProvider(provider);
+            cuenta.setOauthProviderId(info.providerId());
+            if (cuenta.getNombre() == null && info.name() != null) {
+                cuenta.setNombre(info.name());
+            }
+            authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
+                    AuthEvent.LOGIN, AuthEvent.SUCCESS, "OAuth2 " + provider + " vinculado");
+            return emitirTokens(cuenta);
+        }
+
+        // Auto-registro de cliente nuevo por OAuth2
+        CuentaCliente cuenta = new CuentaCliente();
+        cuenta.setEmail(email);
+        cuenta.setNombre(info.name() != null ? info.name() : "");
+        cuenta.setOauthProvider(provider);
+        cuenta.setOauthProviderId(info.providerId());
+        cuenta = cuentaClienteRepository.save(cuenta);
+        authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS, "Registro OAuth2 " + provider);
+        return emitirTokens(cuenta);
     }
 
     private static String sha256(String valor) {

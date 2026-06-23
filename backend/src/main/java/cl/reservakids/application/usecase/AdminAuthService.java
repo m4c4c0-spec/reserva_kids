@@ -6,6 +6,8 @@ import cl.reservakids.domain.model.AuthEvent;
 import cl.reservakids.domain.model.RefreshTokenAdmin;
 import cl.reservakids.domain.repository.AdministradorRepository;
 import cl.reservakids.domain.repository.RefreshTokenAdminRepository;
+import cl.reservakids.infrastructure.oauth2.OAuth2Service;
+import cl.reservakids.infrastructure.oauth2.OAuth2UserInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -40,6 +42,7 @@ public class AdminAuthService {
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
     private final AuthEventPort authEvent;
+    private final OAuth2Service oauth2Service;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.jwt.refresh-days}")
@@ -58,6 +61,13 @@ public class AdminAuthService {
                             AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Email no registrado");
                     return new BadCredentialsException("Credenciales inválidas");
                 });
+        if (admin.isOauth() && admin.getPasswordHash() == null) {
+            authEvent.registrar(AuthEvent.ACTOR_ADMIN, admin.getId(), email,
+                    AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Cuenta OAuth sin contraseña");
+            throw new BadCredentialsException(
+                    "Esta cuenta usa inicio de sesión con " + admin.getOauthProvider()
+                    + ". Por favor inicia sesión con ese proveedor.");
+        }
         if (!passwordEncoder.matches(req.password(), admin.getPasswordHash())) {
             authEvent.registrar(AuthEvent.ACTOR_ADMIN, admin.getId(), email,
                     AuthEvent.LOGIN_FAIL, AuthEvent.FAILURE, "Contraseña incorrecta");
@@ -127,6 +137,34 @@ public class AdminAuthService {
         byte[] bytes = new byte[48];
         secureRandom.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    @Transactional
+    public AdminTokenResponse oauth2Login(String provider, String code, String redirectUri) {
+        OAuth2UserInfo info = oauth2Service.verify(provider, code, redirectUri);
+        String email = normalizarEmail(info.email());
+
+        var existingByProvider = administradorRepository.findByOauthProviderAndOauthProviderId(
+                info.provider(), info.providerId());
+        if (existingByProvider.isPresent()) {
+            Administrador admin = existingByProvider.get();
+            authEvent.registrar(AuthEvent.ACTOR_ADMIN, admin.getId(), email,
+                    AuthEvent.LOGIN, AuthEvent.SUCCESS, "OAuth2 " + provider);
+            return emitirTokens(admin);
+        }
+
+        var existingByEmail = administradorRepository.findByEmail(email);
+        if (existingByEmail.isPresent()) {
+            Administrador admin = existingByEmail.get();
+            admin.setOauthProvider(provider);
+            admin.setOauthProviderId(info.providerId());
+            authEvent.registrar(AuthEvent.ACTOR_ADMIN, admin.getId(), email,
+                    AuthEvent.LOGIN, AuthEvent.SUCCESS, "OAuth2 " + provider + " vinculado");
+            return emitirTokens(admin);
+        }
+
+        throw new org.springframework.security.authentication.BadCredentialsException(
+                "No existe un administrador con ese email");
     }
 
     private static String sha256(String valor) {
