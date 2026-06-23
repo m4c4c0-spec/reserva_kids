@@ -70,5 +70,11 @@ public class ServicioService {
         if (req.activo() != null) {
             servicio.setActivo(req.activo());
         }
+        if (req.esAdicional() != null) {
+            servicio.setEsAdicional(req.esAdicional());
+        }
+        if (req.stock() != null) {
+            servicio.setStock(req.stock() == 0 ? null : req.stock());
+        }
     }
 }

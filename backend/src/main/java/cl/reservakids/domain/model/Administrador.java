@@ -26,7 +26,7 @@ public class Administrador {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    @Column(name = "password_hash")
     private String passwordHash;
 
     @Column(nullable = false)
@@ -34,4 +34,14 @@ public class Administrador {
 
     @Column(name = "creado_en", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime creadoEn;
+
+    @Column(name = "oauth_provider", length = 20)
+    private String oauthProvider;
+
+    @Column(name = "oauth_provider_id", length = 255)
+    private String oauthProviderId;
+
+    public boolean isOauth() {
+        return oauthProvider != null;
+    }
 }
