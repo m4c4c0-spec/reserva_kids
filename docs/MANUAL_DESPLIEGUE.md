@@ -88,15 +88,23 @@ Cada negocio configura sus credenciales en **Configuración** del panel; no van 
 
 Ambos valores se guardan **cifrados en reposo** (AES-256-GCM, ver `CRED_ENC_KEY`).
 
-## 3. Frontend (build estático)
+## 3. Frontend (Nuxt 3 SSR — lo construye Docker)
 
-```bash
-cd frontend
-echo "VITE_API_URL=https://reservakids.cl" > .env.production
-npm ci && npm run build        # genera dist/ (~150 kB)
-```
+> **El frontend ya NO es un build estático.** Migró de Vite SPA (`dist/`) a **Nuxt 3 SSR**:
+> dos procesos Node (Nitro) servidos por Caddy según el path. No se corre `npm run build`
+> en el host; las imágenes las construye `docker compose` desde `frontend/Dockerfile` y el
+> deploy lo orquesta `scripts/deploy-prod.sh` (paso 5).
 
-`dist/` lo sirve Caddy directamente (paso 4) — no hace falta Node en producción.
+Dos unidades de deploy independientes (misma imagen, dos contenedores):
+
+| Contenedor | Rutas | Puerto interno |
+|---|---|---|
+| `frontend-public` | `/`, `/{slug}`, `/invitacion`, `/negocios`, `/privacidad`, assets | `127.0.0.1:3000` |
+| `frontend-panel`  | `/panel`, `/admin`, `/clientes`, `/staff`, `/login`, `/reset`, `/oauth2` | `127.0.0.1:3001` |
+
+Así, si un deploy rompe el Panel, la app pública de reservas sigue operando. La URL pública
+de la API la toman por entorno (`FRONTEND_URL` / `NUXT_PUBLIC_API_URL`); en modo single-tenant,
+`RESERVAKIDS_SINGLE_TENANT_SLUG` se inyecta al arrancar (no se hornea en el build).
 
 ## 4. Caddy (TLS automático + reverse proxy + SPA)
 
@@ -131,11 +139,15 @@ reservakids.cl {
         reverse_proxy localhost:8080
     }
 
-    # SPA Vue: archivos estáticos con fallback a index.html (rutas /panel, /{slug})
+    # Rutas administrativas → contenedor Nuxt SSR del Panel (:3001)
+    @panel path /panel /panel/* /admin /admin/* /clientes /clientes/* /staff /staff/* /login /login/* /reset /reset/* /magic /magic/* /oauth2 /oauth2/*
+    handle @panel {
+        reverse_proxy localhost:3001
+    }
+
+    # Todo lo demás (app pública de ventas/reservas) → contenedor Nuxt SSR público (:3000)
     handle {
-        root * /opt/reservakids/frontend/dist
-        try_files {path} /index.html
-        file_server
+        reverse_proxy localhost:3000
     }
 }
 
@@ -144,6 +156,9 @@ www.reservakids.cl {
 }
 ```
 
+> El `Caddyfile` raíz del repo ya contiene exactamente esto (basta `sudo cp Caddyfile /etc/caddy/Caddyfile`).
+> El `Caddyfile.docker` es la variante con hostnames internos de compose, para el modo all-in-docker.
+
 ```bash
 systemctl reload caddy
 ```
@@ -151,18 +166,35 @@ systemctl reload caddy
 Caddy obtiene y renueva los certificados TLS solo (Let's Encrypt) y setea `X-Forwarded-For`
 correctamente (appendea — por eso el backend toma la **última** IP, fix #1 de la Sesión 5).
 
-**Cerrar el puerto interno:** en `docker-compose.yml`, cambiar el mapeo del backend a
-`"127.0.0.1:8080:8080"` (y el de la BD a `"127.0.0.1:5432:5432"` o eliminarlo) para que solo
-Caddy/localhost lleguen a ellos. Con `ufw` ya bloqueando todo salvo 22/80/443, es doble candado.
+**Cerrar los puertos internos (ya automatizado):** `compose.prod.yml` bindea backend, BD y los
+dos front SSR a `127.0.0.1` (vía la directiva `!override` — Compose **fusiona** las listas de
+`ports`, así que sin `!override` los binds a loopback NO quitan los `0.0.0.0` del base y todo
+quedaría expuesto). Con `ufw` bloqueando todo salvo 22/80/443, es doble candado. El stack de
+observabilidad (Grafana/Prometheus/Tempo) también queda en loopback y no lo arranca el deploy
+de prod; accédelo por túnel SSH (`ssh -L 3002:127.0.0.1:3002 vps`).
 
 ## 5. Levantar
 
+Usar el script de despliegue, que valida las variables obligatorias, autogenera secretos que
+falten (incluida `GRAFANA_ADMIN_PASSWORD`), construye las imágenes (backend + Nuxt SSR) y levanta
+**solo** los servicios de producción con el overlay `compose.prod.yml`:
+
 ```bash
 cd /opt/reservakids
-docker compose up -d --build
-docker compose ps          # backend debe quedar (healthy) — tarda ~60 s (start_period)
-docker compose logs backend | grep Flyway   # migraciones V1..V4 aplicadas
+./scripts/deploy-prod.sh
 ```
+
+Equivale a (si prefieres a mano):
+
+```bash
+docker compose -f docker-compose.yml -f compose.prod.yml --env-file .env \
+    up -d --build db backend frontend-public frontend-panel backup
+docker compose ... ps          # backend (healthy) — tarda ~60 s (start_period)
+docker compose ... logs backend | grep Flyway   # migraciones V1..V34 aplicadas
+```
+
+> Se levantan servicios **explícitos** a propósito: así NO arrancan ni `mailpit` (perfil dev)
+> ni el stack de observabilidad ni el `caddy` dockerizado (en prod, Caddy va en el host).
 
 Flyway crea/migra el esquema automáticamente en el arranque (`ddl-auto: validate`: Hibernate
 solo verifica, nunca toca el esquema).
@@ -218,12 +250,11 @@ cada ventana semestral (`OPERACION.md` §1).
 ```bash
 cd /opt/reservakids
 git pull
-cd frontend && npm ci && npm run build && cd ..   # frontend nuevo (Caddy lo sirve al instante)
-docker compose up -d --build backend              # backend nuevo; Flyway migra solo
-docker compose ps                                 # esperar (healthy)
+./scripts/deploy-prod.sh        # reconstruye imágenes (backend + Nuxt SSR) y relevanta; Flyway migra solo
 ```
 
-Ventana de corte: ~30–60 s mientras la JVM arranca. Para el MVP es aceptable;
+`deploy-prod.sh` reconstruye y relevanta backend + ambos front SSR; Flyway aplica las migraciones
+nuevas al arrancar. Ventana de corte: ~30–60 s mientras la JVM arranca. Para el MVP es aceptable;
 zero-downtime (2 réplicas + ShedLock para los jobs) queda para cuando haya tráfico que lo pague.
 
 ---
@@ -235,8 +266,9 @@ Para evitar administrar un servidor (a costa de ~USD 5–10/mes extra y menos co
 1. **BD + API en Railway**: crear proyecto con plugin PostgreSQL; deploy del directorio
    `backend/` (detecta el Dockerfile). Variables: las mismas del paso 2, con `DB_URL` del
    plugin y `TRUST_PROXY=true` (Railway pone proxy delante).
-2. **Frontend en Vercel**: importar el repo, root `frontend/`, build `npm run build`,
-   output `dist/`. Variable `VITE_API_URL=https://<api>.railway.app`.
+2. **Frontend en Vercel**: importar el repo, root `frontend/`. Al ser **Nuxt 3 SSR**, Vercel
+   detecta el preset Nitro automáticamente (no es un `dist/` estático). Variable
+   `NUXT_PUBLIC_API_URL=https://<api>.railway.app` (y `RESERVAKIDS_SINGLE_TENANT_SLUG` si aplica).
 3. **CORS**: `CORS_ALLOWED_ORIGINS=https://<app>.vercel.app` (aquí sí hay orígenes distintos).
 4. Backups: Railway hace snapshots, pero seguir corriendo `backup_db.sh` desde cualquier
    máquina con el `DATABASE_URL` externo + rclone (no depender solo del proveedor).
@@ -261,12 +293,11 @@ calendario) siempre son frescas, no se cachean.
 ### Requisitos servidos
 
 - HTTPS (Caddy lo da automáticamente — la PWA no funciona sobre HTTP salvo en `localhost`).
-- `manifest.webmanifest` servido con `Content-Type: application/manifest+json` (Vite lo
-  genera en `dist/` y Caddy lo sirve como static file).
-- `sw.js` (service worker) en la raíz del scope — Vite lo genera en `dist/sw.js`.
-- Iconos 192/512 px (any + maskable) y `apple-touch-icon` 180px en `dist/icons/`.
+- `manifest.webmanifest`, `sw.js` (service worker) e iconos 192/512 px (any + maskable) +
+  `apple-touch-icon` 180px. Los genera `@vite-pwa/nuxt` durante `nuxt build` (en `.output/`)
+  y los sirve el servidor SSR de Nitro del contenedor del Panel.
 
-El build (`npm run build`) genera todo esto. No hay que hacer nada extra en el servidor.
+El build de la imagen Docker (`nuxt build`) genera todo esto. No hay que hacer nada extra en el servidor.
 
 ### Android (Chrome / Edge)
 
@@ -303,7 +334,7 @@ el notch / home indicator gracias a `viewport-fit=cover` + `env(safe-area-inset-
 
 ### Actualizaciones
 
-`registerType: 'autoUpdate'` en la config de VitePWA hace que el service worker se
+`registerType: 'autoUpdate'` en la config de `@vite-pwa/nuxt` (en `nuxt.config.ts`) hace que el service worker se
 actualice automáticamente cuando se publica una versión nueva. El usuario no necesita hacer
 nada: la próxima vez que abre la app, el SW descarga los assets nuevos y los activa al
 cerrar todas las pestañas. Para forzar la actualización inmediata, el usuario puede cerrar

@@ -11,21 +11,24 @@ El cliente local percibe mayor valor al tener su "propio sistema exclusivo" bajo
 
 ## 2. Implementación Técnica (El "Interruptor Mágico")
 
-Para lograr este modelo de exclusividad sin destruir la robusta arquitectura Multi-Tenant del Backend (Spring Boot + PostgreSQL), se implementó un mecanismo de aislamiento a nivel de Frontend (Vue 3).
+Para lograr este modelo de exclusividad sin destruir la robusta arquitectura Multi-Tenant del Backend (Spring Boot + PostgreSQL), se implementó un mecanismo de aislamiento a nivel de Frontend (**Nuxt 3 SSR**).
 
-### Variable de Entorno: `VITE_SINGLE_TENANT_SLUG`
-Se agregó soporte para esta variable en el archivo `.env` del Frontend. Su presencia actúa como un interruptor arquitectónico:
+> **Nota de arquitectura (2026-06):** el frontend migró de Vue 3 SPA (Vite + vue-router, estáticos en `dist/`) a **Nuxt 3 con SSR** (file-based routing en `src/pages`, middleware global). El interruptor single-tenant ya no vive en `router/index.js` sino en un middleware de Nuxt, y la variable se inyecta por entorno al contenedor SSR en runtime (no se hornea en un build estático).
+
+### Variable de Entorno: `NUXT_PUBLIC_SINGLE_TENANT_SLUG`
+Su presencia actúa como interruptor arquitectónico. Se inyecta al contenedor SSR en runtime (no requiere recompilar la imagen). En la práctica se define `RESERVAKIDS_SINGLE_TENANT_SLUG` en `.env`; el `docker-compose.yml` la propaga como `NUXT_PUBLIC_SINGLE_TENANT_SLUG` (y queda disponible en el cliente vía `window.__SINGLE_TENANT_SLUG__`, inyectado en `nuxt.config.ts`):
 
 ```env
-# Ejemplo de configuración para un despliegue de licencia exclusiva
-VITE_SINGLE_TENANT_SLUG=salon-fantasia
+# Ejemplo de configuración para un despliegue de licencia exclusiva (en .env)
+RESERVAKIDS_SINGLE_TENANT_SLUG=salon-fantasia
 ```
 
-### Comportamiento del Enrutador (`router/index.js`)
-Si la variable está definida, la aplicación muta sus rutas automáticamente:
-1.  **Bloqueo de Marketplace:** Las vistas `DirectorioPublicoView.vue` y `DirectorioView.vue` se deshabilitan, retornando un error 404 para evitar fugas de tráfico hacia la competencia.
-2.  **Apropiación de la Raíz (`/`):** La Landing Page de ventas del SaaS (`LandingPageView.vue`) se oculta. En su lugar, al acceder a la raíz del dominio, se renderiza instantáneamente el catálogo y calendario del negocio definido en la variable de entorno (`PublicSiteView.vue`).
-3.  **URL Limpia (Marca Blanca):** El cliente final (los padres) nunca ve el "slug" en la URL como si fuera un subdirectorio. El sistema completo aparenta ser propietario y exclusivo.
+### Comportamiento (middleware `src/middleware/single-tenant.global.ts`)
+Si la variable está definida, la app muta su comportamiento automáticamente:
+1.  **Bloqueo de Marketplace:** la ruta del directorio público (`/negocios`) redirige a `/404`, evitando fugas de tráfico hacia la competencia.
+2.  **Home de cliente directo:** `/clientes` redirige a `/clientes/reservas` (no al directorio: solo existe un negocio).
+3.  **Apropiación de la Raíz (`/`):** la página `src/pages/index.vue` renderiza el catálogo y calendario del negocio configurado en lugar de la landing de ventas del SaaS.
+4.  **URL Limpia (Marca Blanca):** el cliente final nunca ve el "slug" en la URL; el sistema completo aparenta ser propietario y exclusivo.
 
 ## 3. Guía de Despliegue y Operación
 
@@ -34,16 +37,17 @@ Para vender e instalar el software a un nuevo cliente bajo este modelo, los paso
 1.  **Clonación de Repositorio:** Descargar el código fuente en un servidor VPS dedicado o en un contenedor aislado.
 2.  **Base de Datos Dedicada:** Iniciar una instancia de PostgreSQL limpia. El Backend correrá sus migraciones (Flyway) normalmente.
 3.  **Setup de Datos (Manual o Súper-Admin):** Crear el usuario dueño (`Tenant`) en la base de datos y asignarle su "slug" único.
-4.  **Inyección del Frontend:** Crear el archivo `frontend/.env` definiendo:
+4.  **Inyección del Frontend (por entorno, no por build):** definir en el `.env` del despliegue:
     ```env
-    VITE_API_URL=https://api.tusalon.cl
-    VITE_SINGLE_TENANT_SLUG=el-slug-del-cliente
+    RESERVAKIDS_SINGLE_TENANT_SLUG=el-slug-del-cliente
+    FRONTEND_URL=https://reservas.tusalon.cl
     ```
-5.  **Build y Exposición:** Compilar el frontend (`npm run build`) y exponerlo en el dominio web comprado para el cliente (ej. `reservas.tusalon.cl`).
+    Estas variables las consume el contenedor SSR de Nuxt al arrancar (vía `docker-compose.yml` → `NUXT_PUBLIC_*`); no hay que recompilar la imagen por cliente.
+5.  **Despliegue:** `./scripts/deploy-prod.sh` construye las imágenes (backend + Nuxt SSR) y levanta el stack; Caddy expone el dominio comprado para el cliente (ej. `reservas.tusalon.cl`). Ver [`MANUAL_DESPLIEGUE.md`](MANUAL_DESPLIEGUE.md).
 
 ## 4. Visión a Futuro
 
 Al mantener la estructura Multi-Tenant bajo el capó (tablas con `tenant_id`), **se conserva la capacidad de actualizar el código de forma unificada**. 
 Si en el futuro se descubre un bug o se desarrolla una nueva función, basta con hacer un `git pull` en los servidores de todos los clientes. Ningún esquema de base de datos se rompe. 
 
-Si el negocio decide expandirse nacionalmente con un modelo SaaS automatizado, basta con no definir la variable `VITE_SINGLE_TENANT_SLUG` y la plataforma revertirá automáticamente a su estado original de Marketplace masivo.
+Si el negocio decide expandirse nacionalmente con un modelo SaaS automatizado, basta con no definir la variable `RESERVAKIDS_SINGLE_TENANT_SLUG` y la plataforma revertirá automáticamente a su estado original de Marketplace masivo.
