@@ -51,6 +51,10 @@ describe('useAuthStore', () => {
     const auth = useAuthStore()
     await auth.refresh()
     expect(auth.accessToken).toBe('tok-3')
-    expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/auth/refresh'), null, { withCredentials: true })
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh'),
+      null,
+      expect.objectContaining({ withCredentials: true }),
+    )
   })
 })
