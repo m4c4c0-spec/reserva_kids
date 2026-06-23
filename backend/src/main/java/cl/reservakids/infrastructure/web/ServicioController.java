@@ -30,20 +30,20 @@ public class ServicioController {
     public ResponseEntity<ServicioResponse> crear(@AuthenticationPrincipal AuthPrincipal principal,
                                                   @Valid @RequestBody ServicioRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(servicioService.crear(principal.tenantId(), req));
+                .body(servicioService.crear(principal.tenantId(), principal.usuarioId(), req));
     }
 
     @PutMapping("/{id}")
     public ServicioResponse actualizar(@AuthenticationPrincipal AuthPrincipal principal,
                                        @PathVariable Long id,
                                        @Valid @RequestBody ServicioRequest req) {
-        return servicioService.actualizar(principal.tenantId(), id, req);
+        return servicioService.actualizar(principal.tenantId(), principal.usuarioId(), id, req);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> desactivar(@AuthenticationPrincipal AuthPrincipal principal,
                                            @PathVariable Long id) {
-        servicioService.desactivar(principal.tenantId(), id);
+        servicioService.desactivar(principal.tenantId(), principal.usuarioId(), id);
         return ResponseEntity.noContent().build();
     }
 }

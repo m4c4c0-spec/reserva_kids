@@ -16,15 +16,19 @@ public final class ServicioDtos {
             @NotNull @Min(0) Integer precioClp,
             @Min(1) Integer duracionMin,
             @Min(1) Integer capacidad,
-            Boolean activo) {}
+            Boolean activo,
+            Boolean esAdicional,
+            @Min(0) Integer stock) {}
 
     public record ServicioResponse(
             Long id, String nombre, String descripcion,
-            Integer precioClp, Integer duracionMin, Integer capacidad, boolean activo) {
+            Integer precioClp, Integer duracionMin, Integer capacidad, boolean activo,
+            boolean esAdicional, Integer stock) {
 
         public static ServicioResponse de(Servicio s) {
             return new ServicioResponse(s.getId(), s.getNombre(), s.getDescripcion(),
-                    s.getPrecioClp(), s.getDuracionMin(), s.getCapacidad(), s.isActivo());
+                    s.getPrecioClp(), s.getDuracionMin(), s.getCapacidad(), s.isActivo(),
+                    s.isEsAdicional(), s.getStock());
         }
     }
 }

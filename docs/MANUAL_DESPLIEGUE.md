@@ -47,13 +47,18 @@ Editar `.env` — **todas** estas son obligatorias en producción:
 ```bash
 POSTGRES_PASSWORD=$(openssl rand -base64 24)   # generar, no inventar
 JWT_SECRET=$(openssl rand -base64 64)          # mínimo 64 bytes
+CRED_ENC_KEY=$(openssl rand -base64 32)        # AES-256: cifra el token de Mercado Pago en reposo (S1)
 CORS_ALLOWED_ORIGINS=https://reservakids.cl
+FRONTEND_URL=https://reservakids.cl            # base de los enlaces de reset de contraseña
+API_URL=https://api.reservakids.cl             # URL PÚBLICA de la API: webhook de Mercado Pago (B1)
 APP_TIMEZONE=America/Santiago
 TRUST_PROXY=true                               # ¡SOLO porque Caddy está delante!
 MAIL_HOST=smtp-relay.brevo.com                 # o smtp.resend.com
 MAIL_PORT=587
 MAIL_USERNAME=<usuario brevo>
 MAIL_PASSWORD=<api key brevo>
+MAIL_SMTP_AUTH=true                            # proveedores reales: auth + STARTTLS
+MAIL_SMTP_STARTTLS=true
 MAIL_FROM=no-reply@reservakids.cl
 ```
 
@@ -61,15 +66,45 @@ MAIL_FROM=no-reply@reservakids.cl
 > detrás de un proxy que controle ese header (Caddy lo hace). Jamás con el puerto 8080
 > expuesto a internet — por eso el paso 4 lo cierra.
 
-## 3. Frontend (build estático)
+> ⚠️ `API_URL` **debe ser la URL pública de la API** (la que Mercado Pago usa como
+> `notificationUrl` del webhook). Si queda en `localhost`, MP no alcanza el webhook y los
+> pagos online nunca se auto-confirman. Asegúrate de que `https://api.reservakids.cl/api/public/webhooks/mercadopago/`
+> sea accesible desde internet (sin auth — el endpoint valida la firma del propio MP).
 
-```bash
-cd frontend
-echo "VITE_API_URL=https://reservakids.cl" > .env.production
-npm ci && npm run build        # genera dist/ (~150 kB)
-```
+> 🔐 `CRED_ENC_KEY` cifra el Access Token de Mercado Pago y el secreto del webhook en la BD.
+> **Guárdala fuera de la BD y no la rotes a la ligera:** al cambiarla, las credenciales MP ya
+> cifradas dejan de poder descifrarse y cada negocio deberá volver a pegar su token. Si se
+> omite, se deriva de `JWT_SECRET` (aceptable solo en desarrollo).
 
-`dist/` lo sirve Caddy directamente (paso 4) — no hace falta Node en producción.
+### Mercado Pago (por negocio, en el panel del dueño)
+
+Cada negocio configura sus credenciales en **Configuración** del panel; no van en `.env`:
+
+- **Access Token** (Credenciales de Producción de su cuenta MP) — obligatorio para cobrar señas online.
+- **Secreto de firma del webhook** (MP → Tus Integraciones → Webhooks → Firma secreta) — opcional
+  pero recomendado: si se configura, la API valida el header `x-signature` y rechaza con `401`
+  cualquier notificación que no venga firmada por MP (S3). Sin él, la autenticidad se apoya solo
+  en re-consultar el pago a la API de MP.
+
+Ambos valores se guardan **cifrados en reposo** (AES-256-GCM, ver `CRED_ENC_KEY`).
+
+## 3. Frontend (Nuxt 3 SSR — lo construye Docker)
+
+> **El frontend ya NO es un build estático.** Migró de Vite SPA (`dist/`) a **Nuxt 3 SSR**:
+> dos procesos Node (Nitro) servidos por Caddy según el path. No se corre `npm run build`
+> en el host; las imágenes las construye `docker compose` desde `frontend/Dockerfile` y el
+> deploy lo orquesta `scripts/deploy-prod.sh` (paso 5).
+
+Dos unidades de deploy independientes (misma imagen, dos contenedores):
+
+| Contenedor | Rutas | Puerto interno |
+|---|---|---|
+| `frontend-public` | `/`, `/{slug}`, `/invitacion`, `/negocios`, `/privacidad`, assets | `127.0.0.1:3000` |
+| `frontend-panel`  | `/panel`, `/admin`, `/clientes`, `/staff`, `/login`, `/reset`, `/oauth2` | `127.0.0.1:3001` |
+
+Así, si un deploy rompe el Panel, la app pública de reservas sigue operando. La URL pública
+de la API la toman por entorno (`FRONTEND_URL` / `NUXT_PUBLIC_API_URL`); en modo single-tenant,
+`RESERVAKIDS_SINGLE_TENANT_SLUG` se inyecta al arrancar (no se hornea en el build).
 
 ## 4. Caddy (TLS automático + reverse proxy + SPA)
 
@@ -79,6 +114,23 @@ npm ci && npm run build        # genera dist/ (~150 kB)
 reservakids.cl {
     encode gzip
 
+    # Headers de seguridad (revisión de ciberseguridad §5.12):
+    # - CSP: solo scripts/estilos self + fuentes Google; imágenes data: y self;
+    #   connect a la API self y a Mercado Pago; sin frames (anti clickjacking).
+    # - X-Content-Type-Options: anti MIME sniffing.
+    # - Referrer-Policy: no envía Referer a terceros (mitiga leak del token de
+    #   reset que viaja en query string).
+    # - frame-ancestors 'none': anti clickjacking (defensa en profundidad con CSP).
+    header {
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.mercadopago.cl https://*.mercadopago.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.mercadopago.com"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        # HSTS: 1 año + preload. Solo si ya sirves todo por HTTPS (Caddy sí).
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    }
+
     # API y health check → backend en localhost
     handle /api/* {
         reverse_proxy localhost:8080
@@ -87,11 +139,15 @@ reservakids.cl {
         reverse_proxy localhost:8080
     }
 
-    # SPA Vue: archivos estáticos con fallback a index.html (rutas /panel, /{slug})
+    # Rutas administrativas → contenedor Nuxt SSR del Panel (:3001)
+    @panel path /panel /panel/* /admin /admin/* /clientes /clientes/* /staff /staff/* /login /login/* /reset /reset/* /magic /magic/* /oauth2 /oauth2/*
+    handle @panel {
+        reverse_proxy localhost:3001
+    }
+
+    # Todo lo demás (app pública de ventas/reservas) → contenedor Nuxt SSR público (:3000)
     handle {
-        root * /opt/reservakids/frontend/dist
-        try_files {path} /index.html
-        file_server
+        reverse_proxy localhost:3000
     }
 }
 
@@ -100,6 +156,9 @@ www.reservakids.cl {
 }
 ```
 
+> El `Caddyfile` raíz del repo ya contiene exactamente esto (basta `sudo cp Caddyfile /etc/caddy/Caddyfile`).
+> El `Caddyfile.docker` es la variante con hostnames internos de compose, para el modo all-in-docker.
+
 ```bash
 systemctl reload caddy
 ```
@@ -107,18 +166,35 @@ systemctl reload caddy
 Caddy obtiene y renueva los certificados TLS solo (Let's Encrypt) y setea `X-Forwarded-For`
 correctamente (appendea — por eso el backend toma la **última** IP, fix #1 de la Sesión 5).
 
-**Cerrar el puerto interno:** en `docker-compose.yml`, cambiar el mapeo del backend a
-`"127.0.0.1:8080:8080"` (y el de la BD a `"127.0.0.1:5432:5432"` o eliminarlo) para que solo
-Caddy/localhost lleguen a ellos. Con `ufw` ya bloqueando todo salvo 22/80/443, es doble candado.
+**Cerrar los puertos internos (ya automatizado):** `compose.prod.yml` bindea backend, BD y los
+dos front SSR a `127.0.0.1` (vía la directiva `!override` — Compose **fusiona** las listas de
+`ports`, así que sin `!override` los binds a loopback NO quitan los `0.0.0.0` del base y todo
+quedaría expuesto). Con `ufw` bloqueando todo salvo 22/80/443, es doble candado. El stack de
+observabilidad (Grafana/Prometheus/Tempo) también queda en loopback y no lo arranca el deploy
+de prod; accédelo por túnel SSH (`ssh -L 3002:127.0.0.1:3002 vps`).
 
 ## 5. Levantar
 
+Usar el script de despliegue, que valida las variables obligatorias, autogenera secretos que
+falten (incluida `GRAFANA_ADMIN_PASSWORD`), construye las imágenes (backend + Nuxt SSR) y levanta
+**solo** los servicios de producción con el overlay `compose.prod.yml`:
+
 ```bash
 cd /opt/reservakids
-docker compose up -d --build
-docker compose ps          # backend debe quedar (healthy) — tarda ~60 s (start_period)
-docker compose logs backend | grep Flyway   # migraciones V1..V4 aplicadas
+./scripts/deploy-prod.sh
 ```
+
+Equivale a (si prefieres a mano):
+
+```bash
+docker compose -f docker-compose.yml -f compose.prod.yml --env-file .env \
+    up -d --build db backend frontend-public frontend-panel backup
+docker compose ... ps          # backend (healthy) — tarda ~60 s (start_period)
+docker compose ... logs backend | grep Flyway   # migraciones V1..V34 aplicadas
+```
+
+> Se levantan servicios **explícitos** a propósito: así NO arrancan ni `mailpit` (perfil dev)
+> ni el stack de observabilidad ni el `caddy` dockerizado (en prod, Caddy va en el host).
 
 Flyway crea/migra el esquema automáticamente en el arranque (`ddl-auto: validate`: Hibernate
 solo verifica, nunca toca el esquema).
@@ -156,6 +232,7 @@ cada ventana semestral (`OPERACION.md` §1).
 ## 9. Checklist post-despliegue
 
 - [ ] `https://reservakids.cl` carga el frontend con candado TLS
+- [ ] Headers de seguridad presentes: `curl -I https://reservakids.cl | grep -iE "content-security-policy|x-content-type-options|referrer-policy|strict-transport-security"` (revisión §5.12)
 - [ ] `https://reservakids.cl/actuator/health` → `{"status":"UP"}`
 - [ ] Registro de un negocio de prueba → llega al panel
 - [ ] Crear servicio + bloque → visibles en `https://reservakids.cl/<slug>`
@@ -173,12 +250,11 @@ cada ventana semestral (`OPERACION.md` §1).
 ```bash
 cd /opt/reservakids
 git pull
-cd frontend && npm ci && npm run build && cd ..   # frontend nuevo (Caddy lo sirve al instante)
-docker compose up -d --build backend              # backend nuevo; Flyway migra solo
-docker compose ps                                 # esperar (healthy)
+./scripts/deploy-prod.sh        # reconstruye imágenes (backend + Nuxt SSR) y relevanta; Flyway migra solo
 ```
 
-Ventana de corte: ~30–60 s mientras la JVM arranca. Para el MVP es aceptable;
+`deploy-prod.sh` reconstruye y relevanta backend + ambos front SSR; Flyway aplica las migraciones
+nuevas al arrancar. Ventana de corte: ~30–60 s mientras la JVM arranca. Para el MVP es aceptable;
 zero-downtime (2 réplicas + ShedLock para los jobs) queda para cuando haya tráfico que lo pague.
 
 ---
@@ -190,11 +266,88 @@ Para evitar administrar un servidor (a costa de ~USD 5–10/mes extra y menos co
 1. **BD + API en Railway**: crear proyecto con plugin PostgreSQL; deploy del directorio
    `backend/` (detecta el Dockerfile). Variables: las mismas del paso 2, con `DB_URL` del
    plugin y `TRUST_PROXY=true` (Railway pone proxy delante).
-2. **Frontend en Vercel**: importar el repo, root `frontend/`, build `npm run build`,
-   output `dist/`. Variable `VITE_API_URL=https://<api>.railway.app`.
+2. **Frontend en Vercel**: importar el repo, root `frontend/`. Al ser **Nuxt 3 SSR**, Vercel
+   detecta el preset Nitro automáticamente (no es un `dist/` estático). Variable
+   `NUXT_PUBLIC_API_URL=https://<api>.railway.app` (y `RESERVAKIDS_SINGLE_TENANT_SLUG` si aplica).
 3. **CORS**: `CORS_ALLOWED_ORIGINS=https://<app>.vercel.app` (aquí sí hay orígenes distintos).
 4. Backups: Railway hace snapshots, pero seguir corriendo `backup_db.sh` desde cualquier
    máquina con el `DATABASE_URL` externo + rclone (no depender solo del proveedor).
 
 Limitaciones: los jobs `@Scheduled` requieren que la instancia no "duerma" (no usar planes
 serverless que escalan a cero), y el rate limit en memoria supone 1 sola instancia.
+
+---
+
+## Instalación como app móvil (PWA)
+
+ReservaKids es una **PWA** (Progressive Web App): el panel del negocio se instala en el móvil
+o escritorio del dueño como si fuera una app nativa, sin pasar por tiendas de apps. Tras
+instalarla, abre en pantalla completa (sin barra del navegador), tiene su propio icono en el
+home screen y arranca sola. El service worker precachea el shell (HTML/CSS/JS/iconos) para
+que la app cargue instantáneo incluso con mala conexión — las respuestas de la API (reservas,
+calendario) siempre son frescas, no se cachean.
+
+> La PWA solo cubre el **panel del negocio** (`/panel/**`): las páginas públicas (`/{slug}`,
+> landing) se sirven como web normal para que clientes ocasionales no instalen nada.
+
+### Requisitos servidos
+
+- HTTPS (Caddy lo da automáticamente — la PWA no funciona sobre HTTP salvo en `localhost`).
+- `manifest.webmanifest`, `sw.js` (service worker) e iconos 192/512 px (any + maskable) +
+  `apple-touch-icon` 180px. Los genera `@vite-pwa/nuxt` durante `nuxt build` (en `.output/`)
+  y los sirve el servidor SSR de Nitro del contenedor del Panel.
+
+El build de la imagen Docker (`nuxt build`) genera todo esto. No hay que hacer nada extra en el servidor.
+
+### Android (Chrome / Edge)
+
+1. Abrir `https://reservakids.cl/panel` en Chrome.
+2. El panel muestra un botón **"Instalar app"** (icono `install_mobile`) en la barra
+   superior (móvil) o en el sidebar (escritorio) cuando el navegador confirma que se puede
+   instalar. Tocarlo → confirmar.
+   - Alternativa sin botón: menú ⋮ → **"Añadir a pantalla de inicio"** / **"Instalar
+     aplicación"**.
+3. El icono de ReservaKids aparece en el home screen. Al abrirlo, va pantalla completa.
+
+> El botón "Instalar app" usa el evento `beforeinstallprompt` (Chrome/Edge/Android). Si el
+> usuario ya instaló la app, el botón desaparece automáticamente.
+
+### iOS (Safari)
+
+> iOS **no dispara** `beforeinstallprompt`, así que el botón "Instalar app" no aparece en
+> Safari. La instalación es manual pero igual de funcional.
+
+1. Abrir `https://reservakids.cl/panel` en Safari.
+2. Tocar el botón **Compartir** (cuadrado con flecha hacia arriba).
+3. Elegir **"Añadir a pantalla de inicio"**.
+4. Confirmar el título (por defecto "ReservaKids"). El icono aparece en el home screen.
+
+Tras instalar, abre en standalone (sin barra de Safari) con el `apple-touch-icon` y respeta
+el notch / home indicator gracias a `viewport-fit=cover` + `env(safe-area-inset-*)`.
+
+### Escritorio (Chrome / Edge)
+
+1. Abrir `https://reservakids.cl/panel` en Chrome/Edge.
+2. Icono **⊕ Instalar** en la barra de direcciones (a la derecha), o menú → **"Instalar
+   ReservaKids"**.
+3. Se abre en su propia ventana (sin pestañas) y se añade al dock/taskbar.
+
+### Actualizaciones
+
+`registerType: 'autoUpdate'` en la config de `@vite-pwa/nuxt` (en `nuxt.config.ts`) hace que el service worker se
+actualice automáticamente cuando se publica una versión nueva. El usuario no necesita hacer
+nada: la próxima vez que abre la app, el SW descarga los assets nuevos y los activa al
+cerrar todas las pestañas. Para forzar la actualización inmediata, el usuario puede cerrar
+todas las instancias de la app y reabrirla.
+
+> Al publicar una versión nueva (paso 10 del manual), el nuevo `sw.js` reemplaza al viejo.
+> No hace falta que el usuario "desinstale y reinstale" — la PWA se actualiza sola.
+
+### Qué NO es la PWA
+
+- No hay notificaciones push nativas (requieren un service + API de push, fuera del MVP).
+  Los avisos llegan por email + WhatsApp.
+- No hay offline mode completo: el shell carga offline, pero las operaciones (crear
+  reserva, cotizar, confirmar) necesitan conexión a la API.
+- No está publicada en Play Store / App Store. Para eso se necesitaría un TWA (Trusted Web
+  Activity) o Capacitor — no justificado para bus factor 1.
