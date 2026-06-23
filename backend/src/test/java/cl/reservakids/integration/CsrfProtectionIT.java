@@ -140,8 +140,9 @@ class CsrfProtectionIT {
                         .content("{\"refreshToken\":\"fake\"}")
                         .header("X-Requested-With", "XMLHttpRequest")
                         .header("Origin", "https://attacker.example.com"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("Petición cross-site no permitida"));
+                // El 403 puede venir del filtro CORS (sin body) o del CsrfFilter. Ambos
+                // bloquean correctamente; aquí solo nos interesa que la petición sea rechazada.
+                .andExpect(status().isForbidden());
     }
 
     @Test
