@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface CuentaClienteRepository extends JpaRepository<CuentaCliente, Long> {
     Optional<CuentaCliente> findByEmail(String email);
     boolean existsByEmail(String email);
+
+    Optional<CuentaCliente> findByOauthProviderAndOauthProviderId(String oauthProvider, String oauthProviderId);
 }

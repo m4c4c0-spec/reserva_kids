@@ -1,6 +1,7 @@
 package cl.reservakids.infrastructure.web;
 
 import cl.reservakids.application.usecase.ReservaService;
+import cl.reservakids.application.usecase.WebhookFailureMonitor;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.infrastructure.security.CredentialCipher;
@@ -33,8 +34,11 @@ public class WebhookController {
     private final ReservaService reservaService;
     private final TenantRepository tenantRepository;
     private final CredentialCipher credentialCipher;
+    private final WebhookFailureMonitor failureMonitor;
 
     private static final String IGNORADO = "ignorado";
+    /** Canal de pago vigilado para las alertas de Operaciones. */
+    private static final String CANAL_MP = "Mercado Pago";
 
     /** Per-tenant webhook rate limit: evita que un atacante fuerce llamadas a la API de MP iterando tenantIds. */
     private static final int MAX_WEBHOOKS_TENANT_POR_MINUTO = 10;
@@ -46,10 +50,12 @@ public class WebhookController {
 
     public WebhookController(ReservaService reservaService,
                              TenantRepository tenantRepository,
-                             CredentialCipher credentialCipher) {
+                             CredentialCipher credentialCipher,
+                             WebhookFailureMonitor failureMonitor) {
         this.reservaService = reservaService;
         this.tenantRepository = tenantRepository;
         this.credentialCipher = credentialCipher;
+        this.failureMonitor = failureMonitor;
     }
 
     private record WebhookBucket(long epochMinuto, AtomicInteger contador) {}
@@ -87,7 +93,10 @@ public class WebhookController {
         try {
             return procesarEventoPago(tenantId, paymentId, dataId, xRequestId, xSignature);
         } catch (MPException | MPApiException e) {
+            // La API de MP no respondió bien (posible caída). Cuenta el fallo y, al 3.º
+            // consecutivo, dispara la alerta crítica a Operaciones por Slack.
             log.error("Error al procesar webhook de MP: {}", e.getMessage(), e);
+            failureMonitor.registrarFallo(CANAL_MP, e.getMessage());
             return ResponseEntity.internalServerError().body("Error interno");
         }
     }
@@ -156,6 +165,8 @@ public class WebhookController {
                 .accessToken(credentialCipher.decrypt(tenant.getMpAccessToken()))
                 .build();
         Payment payment = new PaymentClient().get(paymentId, requestOptions);
+        // La API de MP respondió correctamente → el canal está sano, reinicia la racha de fallos.
+        failureMonitor.registrarExito(CANAL_MP);
 
         if (payment.getTransactionAmount() == null || payment.getExternalReference() == null) {
             log.warn("Pago {} sin transaction_amount o sin external_reference", dataId);

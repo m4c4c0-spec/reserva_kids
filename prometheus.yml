@@ -1,0 +1,11 @@
+# Prometheus configuration — recolecta métricas del backend cada 15s
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'reservakids-backend'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['backend:8080']

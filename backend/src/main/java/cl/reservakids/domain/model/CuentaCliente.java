@@ -23,7 +23,7 @@ public class CuentaCliente {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    @Column(name = "password_hash")
     private String passwordHash;
 
     private String nombre;
@@ -34,4 +34,14 @@ public class CuentaCliente {
     /** RUT chileno normalizado (sin puntos, con guión y dígito verificador). Ej: "12345678-5". */
     @Column(length = 12)
     private String rut;
+
+    @Column(name = "oauth_provider", length = 20)
+    private String oauthProvider;
+
+    @Column(name = "oauth_provider_id", length = 255)
+    private String oauthProviderId;
+
+    public boolean isOauth() {
+        return oauthProvider != null;
+    }
 }

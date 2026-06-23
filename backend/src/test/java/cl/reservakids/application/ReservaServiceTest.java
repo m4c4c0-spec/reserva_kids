@@ -64,7 +64,7 @@ class ReservaServiceTest {
 
     private SolicitudPublicaRequest solicitud() {
         return new SolicitudPublicaRequest(10L, 20L, "Ana", "11.111.111-1",
-                "+56 9 1111 1111", "ana@mail.cl", 15, "Victoria", "Tema dinosaurios", true);
+                "+56 9 1111 1111", "ana@mail.cl", 15, "Victoria", "Tema dinosaurios", null, true);
     }
 
     @Test
@@ -87,11 +87,15 @@ class ReservaServiceTest {
             return r;
         });
         when(pagoRepository.totalPagado(40L)).thenReturn(0);
+        // El link de WhatsApp se anexa a la notificación al dueño; el adaptador real nunca lo
+        // devuelve null, así que lo stubeamos para que el matcher anyString() lo capture.
+        when(whatsapp.linkWhatsApp(any(Cliente.class), any(Reserva.class)))
+                .thenReturn("https://wa.me/56911111111");
 
         var respuesta = service.crearSolicitudPublica("fiestas-pepito", solicitud());
 
         assertEquals("PENDIENTE", respuesta.estado());
-        verify(notificacion).nuevaSolicitud(eq(tenant), any(Reserva.class), any(Cliente.class));
+        verify(notificacion).nuevaSolicitud(eq(tenant), any(Reserva.class), any(Cliente.class), anyString());
     }
 
     @Test
@@ -133,7 +137,7 @@ class ReservaServiceTest {
         assertThrows(ConflictoBloqueException.class,
                 () -> service.crearSolicitudPublica("fiestas-pepito", solicitud()));
         verify(reservaRepository, never()).saveAndFlush(any());
-        verify(notificacion, never()).nuevaSolicitud(any(), any(), any());
+        verify(notificacion, never()).nuevaSolicitud(any(), any(), any(), anyString());
     }
 
     @Test

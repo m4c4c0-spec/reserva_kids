@@ -89,6 +89,38 @@ public class Tenant {
     @Column(name = "suscripcion_referencia_externa", length = 120)
     private String suscripcionReferenciaExterna;
 
+    /** V28: color primario de marca blanca (hex, ej. '#b5007d'). */
+    @Column(name = "color_primario", nullable = false, length = 7)
+    private String colorPrimario = "#b5007d";
+
+    /** V28: titulo personalizado de pagina (pestana del navegador). Nulo = "ReservaKids". */
+    @Column(name = "titulo_pagina", length = 120)
+    private String tituloPagina;
+
+    /** V28: ID del Meta Pixel para tracking de anuncios. Nulo = sin pixel. */
+    @Column(name = "meta_pixel_id", length = 50)
+    private String metaPixelId;
+
+    /** V29: politicas de cancelacion del negocio (texto libre). */
+    @Column(name = "politicas_cancelacion", columnDefinition = "TEXT")
+    private String politicasCancelacion;
+
+    /** V34: Sincronización bidireccional con Google Calendar. */
+    @Column(name = "google_calendar_sync_enabled", nullable = false)
+    private boolean googleCalendarSyncEnabled = false;
+
+    @Column(name = "google_calendar_id", length = 255)
+    private String googleCalendarId;
+
+    @Column(name = "google_calendar_channel_id", length = 255)
+    private String googleCalendarChannelId;
+
+    @Column(name = "google_calendar_resource_id", length = 255)
+    private String googleCalendarResourceId;
+
+    @Column(name = "google_calendar_channel_expiration")
+    private OffsetDateTime googleCalendarChannelExpiration;
+
     public boolean isActivo() {
         return ESTADO_ACTIVO.equals(estado);
     }

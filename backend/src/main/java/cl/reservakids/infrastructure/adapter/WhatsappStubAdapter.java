@@ -41,6 +41,16 @@ public class WhatsappStubAdapter implements NotificacionWhatsappPort {
 
     private final AtomicInteger fallosConsecutivos = new AtomicInteger();
 
+    /** RNF-07 observabilidad: expone el contador de fallos consecutivos para el panel. */
+    public int fallosConsecutivos() {
+        return fallosConsecutivos.get();
+    }
+
+    /** Indica si WhatsApp está habilitado y correctamente configurado. */
+    public boolean isHabilitadoYConfigurado() {
+        return enabled && !phoneId.isBlank() && !token.isBlank();
+    }
+
     @Override
     public void confirmacionReserva(Tenant tenant, Reserva reserva, Cliente cliente,
                                     List<ReservaServicio> servicios) {
@@ -78,14 +88,47 @@ public class WhatsappStubAdapter implements NotificacionWhatsappPort {
     }
 
     @Override
-    public void nuevaSolicitudDueno(Tenant tenant, Reserva reserva, Cliente cliente) {
+    public void solicitudRecibida(Tenant tenant, Reserva reserva, Cliente cliente) {
         if (cliente.isAnonimizado() || cliente.getTelefono() == null) return;
+        String mensaje = "\uD83D\uDCE8 ¡Recibimos tu solicitud de reserva en " + tenant.getNombre() + "!\n\n"
+                + "Tu fecha queda reservada por 48 horas mientras revisamos tu solicitud.\n"
+                + "Te contactaremos pronto con la cotización. ¡Gracias!";
+        enviar(cliente.getTelefono(), mensaje);
+    }
+
+    @Override
+    public void nuevaSolicitudDueno(Tenant tenant, Reserva reserva, Cliente cliente) {
+        // El aviso va al DUEÑO (teléfono de contacto del negocio), no al cliente.
+        String destinoDueno = tenant.getTelefonoContacto();
+        if (destinoDueno == null || destinoDueno.isBlank()) return;
+        String telCliente = cliente.isAnonimizado() ? "sin teléfono" : cliente.getTelefono();
         String mensaje = "\uD83C\uDF88 ¡Nueva solicitud de reserva!\n\n" +
                 "Cliente: " + cliente.getNombre() + "\n" +
-                "Teléfono: " + cliente.getTelefono() + "\n" +
+                "Teléfono: " + telCliente + "\n" +
                 "Niños: " + (reserva.getNumNinos() != null ? reserva.getNumNinos() : "—") + "\n" +
-                "Revisa tu panel de ReservaKids para cotizar.";
-        enviar(cliente.getTelefono(), mensaje);
+                "Revisa tu panel de ReservaKids para cotizar (la fecha queda en espera 48 h).";
+        enviar(destinoDueno, mensaje);
+    }
+
+    @Override
+    public void recordatorioStaff(String telefono, String nombre, String detalle) {
+        String mensaje = String.format("👋 ¡Hola %s!\n\n🗓 %s\n\nRevisa el calendario de ReservaKids para más detalles.", nombre, detalle);
+        enviar(telefono, mensaje);
+    }
+
+    @Override
+    public String linkWhatsApp(Cliente cliente, Reserva reserva) {
+        if (cliente.isAnonimizado()) return null;
+        String telefono = cliente.getTelefono().replaceAll("[^0-9]", "");
+        String mensaje = "Hola %s! Te escribo por tu solicitud de reserva #%d 🎉"
+                .formatted(cliente.getNombre(), reserva.getId());
+        if (reserva.getEstado() == EstadoReserva.COTIZADA && reserva.getMpInitPoint() != null) {
+            mensaje += "\n\nPuedes confirmar tu reserva de $" + reserva.getSeniaClp()
+                    + " directamente aquí de forma segura con Mercado Pago:\n"
+                    + reserva.getMpInitPoint();
+        }
+        return "https://wa.me/" + telefono + "?text="
+                + java.net.URLEncoder.encode(mensaje, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private void enviar(String telefonoE164, String mensaje) {

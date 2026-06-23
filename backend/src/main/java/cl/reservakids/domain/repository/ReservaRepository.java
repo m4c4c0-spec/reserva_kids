@@ -196,4 +196,7 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
             WHERE r.tenantId = :tenantId AND r.estado IN ('CONFIRMADA', 'REALIZADA')
               AND r.creadaEn >= :desde""")
     long diasConReservas(@Param("tenantId") Long tenantId, @Param("desde") OffsetDateTime desde);
+
+    /** V34: Reservas con evento de Google Calendar vinculado. */
+    List<Reserva> findByTenantIdAndGoogleEventIdNotNull(Long tenantId);
 }

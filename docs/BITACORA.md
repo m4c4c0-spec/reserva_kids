@@ -542,3 +542,307 @@ Tag **v0.1.0**. Versiones alineadas: `pom.xml` `0.1.0`, `package.json` `0.1.0`.
 - `npm run build` (con `VITE_API_URL` de producción): **62 entries PWA precache, 705 KiB**.
 - `npm run lint`: sin errores.
 - Build de producción generado en `frontend/dist/` listo para servir por Caddy.
+
+---
+
+## 2026-06-22 — Sesión 12: CI verde + Testcontainers + Trivy
+
+> Reparación completa del pipeline de CI que fallaba en backend, frontend y seguridad.
+
+### Paso 53 — Fixes de tests de integración
+
+| Falla | Root cause | Fix |
+|---|---|---|
+| Docker Engine 29 exige API ≥1.40, pero Testcontainers 1.21.3 forzaba 1.32 | Incompatibilidad de cliente Docker | `pom.xml`: subir `<testcontainers.version>` a `1.21.4` |
+| `ReservaRepository.bloquearDia` con `@Modifying` + `SELECT pg_advisory_xact_lock` → SQLState 0100E | `pg_advisory_xact_lock` retorna `void`, Hibernate lo interpreta como "resultado inesperado" | Quitar `@Modifying`, cambiar retorno a `Object` |
+| `CsrfProtectionIT.refreshConOriginMaliciosoDebeFallar` fallaba por esperar mensaje JSON de CsrfFilter | CORS bloquea antes que CsrfFilter → no hay body | Solo aserta `status().isForbidden()` |
+| `WebhookMercadoPagoIT.tenantRateLimitExcedidoDevuelve429` llamaba a MP por firma válida | El `x-request-id` del loop coincidía con la firma precalculada | Cambiar `x-request-id` a `rate-limit-<i>` para invalidar firma |
+| 128 tests locales (94 unitarios + 34 integración), `BUILD SUCCESS` | | |
+
+### Paso 54 — Fix de seguridad (Trivy)
+
+- `.github/workflows/ci.yml`: `aquasecurity/trivy-action@v0.30.0` referenciaba `aquasecurity/setup-trivy@v0.2.2`, cuyo tag fue eliminado/hackeado → `Unable to resolve action`. Subido a `v0.36.0` que pinnea setup-trivy por SHA.
+- CI verde completo: Backend 1m42s, Seguridad 27s, Frontend 19s.
+
+### Paso 55 — Merges (gitflow)
+
+- `fix/ci-verde-it-restantes` → `produccion` → `main`
+- `fix/ci-trivy-setup` → `produccion` → `main`
+- Todas las ramas pusheadas y sincronizadas.
+
+---
+
+## 2026-06-22 (tarde) — Sesión 13: Provisión Automática Single-Tenant + Docker runtime injection
+
+> El modelo "Licencia Exclusiva" ($650.000+) requiere que el backend provisione el negocio
+> automáticamente al iniciar el contenedor, y que el frontend inyecte el slug en runtime sin
+> recompilar la imagen Docker por cliente.
+
+### Paso 56 — Bootstrapper automático de negocio
+
+| Pieza | Detalle |
+|---|---|
+| `application.yml` bloque `app.single-tenant.*` | 5 propiedades mapeadas a `RESERVAKIDS_SINGLE_TENANT_*`: `enabled`, `slug`, `nombre`, `admin-email`, `admin-password` |
+| `SingleTenantBootstrapper.java` | `ApplicationRunner` idempotente: verifica `enabled=true` y `tenantRepository.count() == 0`, luego llama `AuthService.registrar()` que crea Tenant + Usuario + Horario por Defecto |
+| `docker-compose.yml` backend service | 5 env vars ST con defaults vacíos; el bootstrapper solo actúa si todas están presentes |
+
+### Paso 57 — Inyección runtime del slug en el frontend
+
+**Problema:** `VITE_*` env vars de Vite se incrustan en el bundle JS durante `vite build`. No se pueden cambiar sin recompilar.
+
+**Solución:** patrón `window.__SINGLE_TENANT_SLUG__`:
+
+| Pieza | Detalle |
+|---|---|
+| `frontend/index.html` | `<script>window.__SINGLE_TENANT_SLUG__ = "";</script>` — placeholder antes de `#app` |
+| `frontend/entrypoint.sh` | `sed` reemplaza el placeholder con `$VITE_SINGLE_TENANT_SLUG` al iniciar nginx |
+| `frontend/Dockerfile` | Multistage: `node:22-alpine` build + `nginx:alpine` serve con entrypoint |
+| `frontend/nginx.conf` | SPA routing + CSP + gzip + headers de seguridad + `no-cache` en index.html |
+| `router/index.js` | `isSingleTenant` lee `window.__SINGLE_TENANT_SLUG__` con fallback a `import.meta.env` (dev mode) |
+| `PublicSiteView.vue` + `AgendarView.vue` | Priorizan `window.__SINGLE_TENANT_SLUG__` → `import.meta.env.*` → `route.params.slug` |
+
+### Paso 58 — Reverse proxy (Caddy) en docker-compose
+
+- `Caddyfile.docker`: reverse proxy `:80` → `frontend:80` y `backend:8080` con CSP, TLS-ready
+- Servicio `caddy` en `docker-compose.yml` con `caddy:alpine`, puertos 80/443, volumen `caddy_data`
+- Arquitectura: Cliente → Caddy:80 → nginx:80 (estáticos) / backend:8080 (API)
+
+### Paso 59 — Documentación
+
+- `PROVISIONAMIENTO_AUTOMATICO.md` reescrito con diagrama de contenedores, flujo Docker, modo híbrido dev.
+
+---
+
+## 2026-06-23 (mañana) — Sesión 14: Marca Blanca + Meta Pixel + Privacidad + Backups
+
+> 5 features orientadas a la experiencia del cliente final (dueño del salón) y al blindaje legal
+> y operativo del modelo de licencias exclusivas.
+
+### Paso 60 — Marca Blanca Visual
+
+| Pieza | Detalle |
+|---|---|
+| `V28__marca_blanca_pixel.sql` | `ALTER TABLE tenant ADD color_primario VARCHAR(7) DEFAULT '#b5007d'`, `titulo_pagina VARCHAR(120)`, `meta_pixel_id VARCHAR(50)` |
+| `Tenant.java` | `colorPrimario`, `tituloPagina`, `metaPixelId` |
+| `TenantDtos.ActualizarConfigRequest` | Extendido con los 3 nuevos campos + validación hex en `TenantService.guardarConfiguracion()` |
+| `PublicController.catalogo` | Expone `colorPrimario`, `tituloPagina`, `metaPixelId` en la respuesta JSON |
+| `PublicSiteView.aplicarMarcaBlanca()` | Inyecta `--color-primary` en `:root`, actualiza `<meta name="theme-color">`, setea `document.title` |
+| `ConfiguracionView.vue` | Sección "Marca blanca" con color picker, input hex, previsualización, título de pestaña |
+| `vite.config.js` + `index.html` | `theme_color` cambiado de `#7C4DFF` a `#b5007d` |
+| `PublicSiteView.vue` checkbox | `accent-[#b5007d]` → `accent-primary` (respeta el color del tenant) |
+
+### Paso 61 — Meta Pixel (Facebook/Instagram)
+
+- `PublicSiteView.aplicarMarcaBlanca()`: inyecta dinámicamente `fbq('init', pixelId)` si `negocio.metaPixelId` existe.
+- CSP actualizado en **4 archivos** (`index.html`, `nginx.conf`, `Caddyfile`, `Caddyfile.docker`): `script-src` permite `https://connect.facebook.net`, `connect-src` e `img-src` permiten `https://www.facebook.com`.
+
+### Paso 62 — Check de Privacidad (Ley 19.628)
+
+- `AgendarView.vue` paso 3 (pago): checkbox `aceptaPrivacidad` con enlace a `/privacidad`. `pagar()` bloquea el pago si no está marcado.
+- Ya existía en `PublicSiteView.vue` (formulario de cotización pública).
+
+### Paso 63 — Backups Automáticos (pg_dump diario 03:00 AM)
+
+| Pieza | Detalle |
+|---|---|
+| `backup/Dockerfile` | Alpine 3.21 + `postgresql16-client` + `dcron` + `gzip` |
+| `backup/entrypoint.sh` | Backup inmediato al iniciar + cron `0 3 * * *` (3 AM UTC), verificación con `zgrep`, retención 14 días, idempotente |
+| `docker-compose.yml` | Servicio `backup` + volumen `backups` |
+
+### Paso 64 — Validación
+
+- `mvn verify`: **128 tests verdes** (94 unitarios + 34 integración).
+- `docker compose up --wait`: 6/6 healthy (db, mailpit, backend, frontend, caddy, backup).
+- Backups verificados: "Backup OK: 12970 bytes".
+
+---
+
+## 2026-06-23 (mañana, continuación) — Sesión 15: Saldos + Legal + RSVP + Upsells + Caja
+
+> 5 features que completan el ciclo operativo del dueño: cobranza post-seña, blindaje legal,
+> captación de clientes por RSVP, venta cruzada y cierre de caja diario.
+
+### Paso 65 — Flyway V29
+
+`V29__saldos_legal_rsvp_upsells_caja.sql`:
+
+| Migración | Tabla / columna |
+|---|---|
+| `politicas_cancelacion TEXT` | `tenant` |
+| `es_adicional BOOLEAN DEFAULT false` | `servicio` |
+| `politicas_aceptadas_en TIMESTAMPTZ` | `reserva` |
+| `invitado` (nueva tabla) | `id`, `tenant_id`, `reserva_id`, `nombre`, `email`, `telefono`, `estado`, `token`, `comentarios`, `creado_en` |
+
+### Paso 66 — Escudo Legal (Políticas de Cancelación)
+
+| Archivo | Cambio |
+|---|---|
+| `Tenant.java` | `politicasCancelacion` (TEXT) |
+| `TenantDtos.ActualizarConfigRequest` | `politicasCancelacion` |
+| `TenantService.guardarConfiguracion()` | Guarda/borra políticas |
+| `Reserva.java` | `politicasAceptadasEn` timestamp |
+| `PublicController.catalogo` | Expone `politicasCancelacion` |
+| `ConfiguracionView.vue` | Textarea "Políticas de cancelación" (máx 5000 chars) |
+| `PublicSiteView.vue` | Muestra políticas (si existen) + checkbox `aceptaPoliticas` obligatorio antes de enviar |
+
+### Paso 67 — RSVP / Invitados
+
+| Pieza | Detalle |
+|---|---|
+| `Invitado.java` | Entidad con `nombre`, `email`, `telefono`, `estado` (PENDIENTE/CONFIRMADO/RECHAZADO), `token` único (64 chars hex) |
+| `InvitadoService.java` | `agregar()` genera token criptográfico, `confirmarRsrv(token)` / `rechazarRsrv(token)` idempotentes, `resumen()` cuenta por estado |
+| `InvitadoController.java` | `GET/POST /api/reservas/{id}/invitados`, `DELETE /api/reservas/{id}/invitados/{invId}`, `GET .../invitados/resumen` |
+| `RsvpPublicController.java` | `GET /api/public/invitacion/{token}`, `POST .../confirmar`, `POST .../rechazar` — sin auth |
+| `RsvpView.vue` | Página pública con nombre del invitado, botones "¡Voy a ir!" / "No voy a poder", campo de comentarios opcional |
+| `router/index.js` | Ruta `/invitacion/:token` |
+| `SolicitudesView.vue` | Sección "Invitados" expandible en cada reserva: formulario para agregar + lista con estado de RSVPs + botón quitar |
+
+### Paso 68 — Upsells (Venta Cruzada)
+
+| Archivo | Cambio |
+|---|---|
+| `Servicio.java` | `esAdicional` boolean (default false) |
+| `ServicioDtos.java` | `ServicioRequest.esAdicional`, `ServicioResponse.esAdicional` |
+| `ServicioService.java` | `aplicar()` maneja `esAdicional` |
+| `ServiciosView.vue` | Checkbox "Servicio adicional" en formulario + badge "Adicional" en cards |
+| `PublicSiteView.vue` | `serviciosPrincipales` (filtra `!esAdicional`) como opciones principales; `serviciosAdicionales` como checkboxes en sección "Agregá extras" |
+
+### Paso 69 — Cierre de Caja Diario
+
+| Pieza | Detalle |
+|---|---|
+| `CajaDtos.CajaDiariaResponse` | `fecha`, `totalReservas`, `reservasConfirmadas`, `citasAgendadas`, `pagosHoy`, `totalRecaudadoHoy`, `saldoPendienteTotal`, `seniaPromedio` |
+| `CajaService.java` | Filtra reservas del día por `inicio` o `creadaEn` en zona `America/Santiago`, cruza con `PagoRepository.totalesPagadosPorReserva()` |
+| `SistemaController.java` | `GET /api/sistema/caja?fecha=YYYY-MM-DD` |
+| `SolicitudesView.vue` | Widget "Caja diaria" con selector de fecha, 4 KPIs: reservas hoy, citas hoy, recaudado hoy, saldo pendiente |
+
+### Paso 70 — Saldos Pendientes (ya existía parcialmente)
+
+- `ReservaResponse.saldoClp` ya se computaba como `totalClp - pagadoClp` (`ReservaDtos.java:47`).
+- Nueva exposición en el widget de Caja: `saldoPendienteTotal` y `seniaPromedio`.
+- El saldo por reserva ya se destacaba en `SolicitudesView` con `<strong class="text-primary">Saldo {{ clp(r.saldoClp) }}</strong>`.
+
+### Paso 71 — Validación
+
+- `mvn verify`: **128 tests verdes** (94 unitarios + 34 integración).
+- `docker compose up --wait`: 6/6 healthy.
+- Backup diario: "Backup OK: 13290 bytes" (incluye nuevas tablas).
+
+---
+
+## 2026-06-23 (mediodía) — Sesión 16: Staff + Inventario + Google Calendar Feed
+
+> 3 features: roles de personal sin acceso a finanzas, gestión de stock físico para upsells,
+> y sincronización con Google Calendar vía feed iCal público.
+
+### Paso 72 — Flyway V30
+
+`V30__staff_inventario_calendar_feed.sql`:
+
+| Migración | Detalle |
+|---|---|
+| `staff` (nueva tabla) | `id`, `tenant_id`, `nombre`, `email` (UNIQUE), `password_hash`, `telefono`, `rol` (default 'ANIMADOR'), `activo`, `whatsapp_recordatorio`, `creado_en` |
+| `servicio.stock` | `INTEGER` (nullable — null = stock infinito) |
+| Índices | `idx_staff_tenant`, `idx_invitado_token`, `idx_invitado_reserva` |
+
+### Paso 73 — Gestión de Personal (Staff)
+
+**Backend — modelo:**
+| Pieza | Detalle |
+|---|---|
+| `Staff.java` | Entidad con `tenantId`, `email`, `passwordHash`, `nombre`, `telefono`, `rol` (String libre, default ANIMADOR), `activo`, `whatsappRecordatorio` |
+| `StaffRepository.java` | `findByEmail`, `findByTenantIdAndActivoTrueAndWhatsappRecordatorioTrue`, etc. |
+| `StaffService.java` | `login()` con bcrypt, `crear()`, `eliminar()` (soft-delete), `eventosDelDia()` (solo CONFIRMADA/REALIZADA), `staffConWhatsapp()` |
+
+**Backend — auth:**
+| Pieza | Detalle |
+|---|---|
+| `JwtService.emitirStaff()` | Emite JWT con claims `tenantId`, `rol=STAFF`, `nombre` — access 15 min |
+| `JwtService.emitirRefreshStaff()` | Refresh 30 días con rol STAFF |
+| `SecurityConfig.java` | Permite `POST /api/staff/login` sin auth, resto de `/api/staff/**` requiere `ROLE_STAFF` |
+| `StaffController.java` | `POST /api/staff/login` → `StaffTokenResponse`, `GET /api/staff/eventos?fecha=YYYY-MM-DD` → solo `id`, `hora`, `numNinos`, `comuna`, `estado` **(sin precios, sin métricas, sin datos sensibles del negocio)** |
+
+**Backend — WhatsApp automático al staff:**
+| Pieza | Detalle |
+|---|---|
+| `NotificacionWhatsappPort.recordatorioStaff()` | Nuevo método en el puerto |
+| `WhatsappStubAdapter.recordatorioStaff()` | Stub → log; real → Meta Cloud API v22.0 |
+| `RecordatorioJobs.recordatorioStaffViernes()` | `@Scheduled(cron = "0 0 23 * * FRI")` — cada viernes 23:00 UTC (19:00 CLT): para cada tenant activo, busca eventos del sábado, construye detalle y envía WhatsApp al staff que tenga `whatsappRecordatorio=true` y `telefono` no nulo |
+
+**Frontend:**
+| Pieza | Detalle |
+|---|---|
+| `stores/staff.js` | Pinia store con `login(email, password)`, `logout()`, `accessToken`, datos del staff |
+| `StaffLoginView.vue` | `/staff/entrar` — login con email/password, fondo decorativo |
+| `StaffCalendarView.vue` | `/staff/calendario` — selector de fecha, lista de eventos con hora grande + niños + comuna + badge de estado **(cero referencias a precios o finanzas)** |
+| `router/index.js` | Rutas `/staff/entrar` y `/staff/calendario` con guards `soloInvitados: 'staff'` / `requiereStaff` y redirecciones cruzadas entre roles |
+
+### Paso 74 — Inventario (Stock)
+
+| Archivo | Cambio |
+|---|---|
+| `Servicio.java` | `stock` (Integer nullable — null = infinito) |
+| `ServicioDtos.java` | `ServicioRequest.stock` (`@Min(0)`), `ServicioResponse.stock` |
+| `ServicioService.aplicar()` | `req.stock()` — 0 se guarda como null |
+| `PublicController.catalogo` | `.filter(s -> s.stock() == null \|\| s.stock() > 0)` — si stock llega a 0, el servicio desaparece del frontend público automáticamente |
+| `ServiciosView.vue` | Campo "Stock disponible" (solo visible si `esAdicional=true`), badge `Stock: N` en la card del servicio |
+
+### Paso 75 — Google Calendar Feed (iCal público)
+
+| Pieza | Detalle |
+|---|---|
+| `PublicController.feedIcal()` | `GET /api/public/{slug}/calendar.ics` — sin auth, público |
+| Contenido | `VCALENDAR` con `METHOD:PUBLISH`, `X-WR-CALNAME:{tenant.nombre}`, `REFRESH-INTERVAL:PT1H` |
+| VEVENTs | Todas las reservas CONFIRMADA con `inicio != null`; `UID:{id}@reservakids.cl`, `DTSTART/DTEND` en `America/Santiago`, `SUMMARY:Fiesta infantil`, `DESCRIPTION:{N} niños - {comuna}` |
+| **Sin precios, sin nombres de cliente, sin datos sensibles** | |
+| Uso | El dueño pega `https://reservas-salonfantasia.cl/api/public/salon-fantasia/calendar.ics` en Google Calendar → "Desde URL" → se sincroniza automáticamente cada hora |
+
+### Paso 76 — Validación final
+
+- `mvn verify`: **128 tests verdes** (94 unitarios + 34 integración).
+- `npm run build`: OK (~1038 KiB PWA precache, 74 entries).
+- `docker compose up --wait`: 6/6 healthy.
+- Staff login endpoint responde correctamente (400 si credenciales inválidas).
+- iCal feed retorna `VCALENDAR` válido con VEVENTs.
+- Backup diario: "Backup OK: 13569 bytes" (incluye tabla staff).
+
+---
+
+> **Estado al cierre del 2026-06-23:** working tree limpio. Migraciones al día en **V30**.
+> Stack operativo completo: 6 servicios Docker (db, mailpit, backend, frontend, caddy, backup).
+> 128 tests backend verdes. Frontend PWA funcional con 4 roles de acceso (DUENO, ADMIN, CLIENTE, STAFF).
+
+---
+
+## Sesión 2026-06-23 (tarde) — Migración Nuxt 3 SSR + capacidades nuevas + readiness de deploy
+
+> **Corrección al cierre previo:** el bloque anterior ("working tree limpio, V30, frontend Vite/PWA")
+> quedó desfasado. Esta sesión cierra una migración grande que NO estaba commiteada.
+
+### Frontend — migración Vite SPA → **Nuxt 3 SSR**
+- `vue-router` + estáticos `dist/` → Nuxt 3 con file-based routing (`src/pages`), `layouts/`,
+  middleware global (`auth.global.ts`, `single-tenant.global.ts`).
+- Dos unidades de deploy SSR (`frontend-public` :3000 / `frontend-panel` :3001) ruteadas por Caddy.
+- Single-tenant ahora por env runtime (`NUXT_PUBLIC_SINGLE_TENANT_SLUG`), no por build.
+- Eliminado el código muerto de la migración: `src/views/` (legacy) y duplicados `frontend/pages/`, `frontend/app.vue`.
+
+### Backend — capacidades nuevas
+- RBAC (roles/permisos, `PermissionEvaluator` + `@PreAuthorize`), Staff, Invitados/RSVP, Caja,
+  OAuth2 SSO (Google), sync Google Calendar + feed iCal público, Idempotency-Key, monitor de
+  fallos de webhook, bootstrap single-tenant. Migraciones **V28..V34**.
+
+### Deploy / seguridad
+- `deploy-prod.sh` reescrito para Nuxt SSR (Docker construye; levanta db+backend+2 front SSR+backup).
+- **Fix de exposición crítico:** Compose fusiona listas de `ports`; sin `!override` los binds a
+  `127.0.0.1` de `compose.prod.yml` no quitaban los `0.0.0.0` del base → Postgres/backend/Grafana
+  quedaban expuestos en el VPS. Añadido `!override`; observabilidad y Grafana (sin admin anónimo) en loopback.
+- `docker-compose.yml`: quitado `depends_on: mailpit` del backend (invalidaba el proyecto en prod).
+- Fix test `ReservaServiceTest` (stub `whatsapp.linkWhatsApp`). **`mvn verify`: 98 unit + 34 IT verdes.**
+
+### CI / PR
+- PR #14 contra `main`. Fixes de CI: `package-lock.json` resincronizado (`npm ci` fallaba) y
+  permisos `pull-requests: read` para gitleaks (fallaba con 403).
+
+### Estado real al cierre
+- Migraciones al día en **V34**. Backend `mvn verify` verde. Frontend Nuxt SSR construye.
+- Pendiente operativo: comprar dominio del cliente y ejecutar `deploy-prod.sh` en el VPS.

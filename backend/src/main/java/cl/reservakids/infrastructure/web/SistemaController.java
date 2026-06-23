@@ -1,8 +1,11 @@
 package cl.reservakids.infrastructure.web;
 
 import cl.reservakids.application.dto.AuditEventDtos.AuditEventResponse;
+import cl.reservakids.application.dto.CajaDtos.CajaDiariaResponse;
 import cl.reservakids.application.dto.MetricasDtos.DashboardResponse;
+import cl.reservakids.application.usecase.CajaService;
 import cl.reservakids.application.usecase.MetricsService;
+import cl.reservakids.application.usecase.WebhookFailureMonitor;
 import cl.reservakids.domain.model.AuditEvent;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.AuditEventRepository;
@@ -10,6 +13,7 @@ import cl.reservakids.domain.repository.HorarioAtencionRepository;
 import cl.reservakids.domain.repository.ServicioRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.infrastructure.adapter.NotificacionAdapter;
+import cl.reservakids.infrastructure.adapter.WhatsappStubAdapter;
 import cl.reservakids.infrastructure.security.AuthPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -19,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,11 +38,20 @@ import java.util.Map;
 public class SistemaController {
 
     private final NotificacionAdapter notificacionAdapter;
+    private final WhatsappStubAdapter whatsappAdapter;
+    private final WebhookFailureMonitor webhookFailureMonitor;
     private final AuditEventRepository auditEventRepository;
     private final MetricsService metricsService;
     private final TenantRepository tenantRepository;
     private final ServicioRepository servicioRepository;
     private final HorarioAtencionRepository horarioAtencionRepository;
+    private final CajaService cajaService;
+
+    @GetMapping("/caja")
+    public CajaDiariaResponse caja(@AuthenticationPrincipal AuthPrincipal principal,
+                                    @RequestParam String fecha) {
+        return cajaService.cajaDiaria(principal.tenantId(), fecha);
+    }
 
     /**
      * V27: estado del onboarding del dueño. El panel lo consulta al entrar y, si faltan pasos,
@@ -65,8 +79,20 @@ public class SistemaController {
     }
 
     @GetMapping("/notificaciones")
-    public NotificacionAdapter.EstadoEnvios estadoNotificaciones() {
-        return notificacionAdapter.estadoEnvios();
+    public Map<String, Object> estadoNotificaciones() {
+        NotificacionAdapter.EstadoEnvios email = notificacionAdapter.estadoEnvios();
+        Map<String, Object> estado = new LinkedHashMap<>();
+        estado.put("email", Map.of(
+                "fallosConsecutivos", email.fallosConsecutivos(),
+                "smtpConfigurado", email.smtpConfigurado(),
+                "ultimoFalloEn", email.ultimoFalloEn() != null ? email.ultimoFalloEn().toString() : null));
+        estado.put("whatsapp", Map.of(
+                "fallosConsecutivos", whatsappAdapter.fallosConsecutivos(),
+                "habilitado", whatsappAdapter.isHabilitadoYConfigurado()));
+        estado.put("webhooks", Map.of(
+                "mercadopago", webhookFailureMonitor.fallosConsecutivos("Mercado Pago"),
+                "khipu", webhookFailureMonitor.fallosConsecutivos("Khipu")));
+        return estado;
     }
 
     /**

@@ -14,6 +14,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     boolean existsByEmail(String email);
     Optional<Usuario> findFirstByTenantIdOrderById(Long tenantId);
 
+    Optional<Usuario> findByOauthProviderAndOauthProviderId(String oauthProvider, String oauthProviderId);
+
     /** Offboarding (falla 3.3): al cerrar el tenant se revocan las sesiones de todos sus usuarios. */
     List<Usuario> findByTenantId(Long tenantId);
 
