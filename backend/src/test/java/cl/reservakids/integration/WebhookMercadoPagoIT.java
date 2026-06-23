@@ -152,13 +152,16 @@ class WebhookMercadoPagoIT {
     @Test
     void tenantRateLimitExcedidoDevuelve429() throws Exception {
         long ts = Instant.now().getEpochSecond();
+        // Firma calculada para un requestId fijo; en el loop se envía otro distinto,
+        // de modo que SIEMPRE sea inválida y no intente llamar a Mercado Pago.
+        // El objetivo aquí es probar el rate-limit por tenant, no la validación HMAC.
         String firma = construirFirma(secretoFirma, "99991", "req-1", ts, secretoFirma);
         for (int i = 0; i < 11; i++) {
             mockMvc.perform(post("/api/public/webhooks/mercadopago/{tenantId}", tenantConMp)
                             .param("type", "payment")
                             .param("id", String.valueOf(99990 + i))
                             .header("x-signature", "ts=" + ts + ",v1=" + firma)
-                            .header("x-request-id", "req-" + i)
+                            .header("x-request-id", "rate-limit-" + i)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{}"))
                     .andExpect(content().string(org.hamcrest.Matchers.anyOf(
