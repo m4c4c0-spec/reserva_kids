@@ -52,6 +52,11 @@ jobs:
   seguridad:
     name: Seguridad (secretos + dependencias)
     runs-on: ubuntu-latest
+    # gitleaks-action@v2 consulta los commits del PR vía API; sin estos permisos
+    # falla con "403 Resource not accessible by integration". Solo lectura.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
