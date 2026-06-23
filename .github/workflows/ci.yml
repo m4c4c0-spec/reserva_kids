@@ -61,8 +61,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Escaneo de dependencias y secretos (Trivy)
-        # Los tags publicados llevan prefijo 'v' (0.28.0 / 0.30.0 sin 'v' no existen).
-        uses: aquasecurity/trivy-action@v0.30.0
+        # v0.30.0 referenciaba aquasecurity/setup-trivy@v0.2.2, cuyo tag fue eliminado
+        # y provocaba "Unable to resolve action". v0.36.0 pinnea setup-trivy por SHA.
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,secret
