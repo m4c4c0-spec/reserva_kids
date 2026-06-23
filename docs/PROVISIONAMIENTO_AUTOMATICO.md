@@ -30,16 +30,16 @@ Si `VITE_SINGLE_TENANT_SLUG` está vacía, el frontend opera en modo multi-tenan
 Crea un archivo `.env` en la raíz del proyecto junto al `docker-compose.yml`:
 
 ```env
-# Base de datos
-POSTGRES_PASSWORD=Secreta123BD
-JWT_SECRET=Secreta123JWT
+# Base de datos (genera valores reales; NO copies estos ejemplos)
+POSTGRES_PASSWORD=<openssl rand -base64 24>
+JWT_SECRET=<openssl rand -base64 64>
 
 # Activación del Auto-Instalador (Backend)
 RESERVAKIDS_SINGLE_TENANT_ENABLED=true
 RESERVAKIDS_SINGLE_TENANT_SLUG=salon-fantasia
 RESERVAKIDS_SINGLE_TENANT_NOMBRE="Salón Fantasía"
 RESERVAKIDS_SINGLE_TENANT_ADMIN_EMAIL=contacto@salonfantasia.cl
-RESERVAKIDS_SINGLE_TENANT_ADMIN_PASSWORD=PasswordTemporal123
+RESERVAKIDS_SINGLE_TENANT_ADMIN_PASSWORD=<contraseña-temporal-de-un-solo-uso>
 
 # En modo full-Docker (sin Vite dev), el frontend está en el mismo dominio
 FRONTEND_URL=http://localhost
