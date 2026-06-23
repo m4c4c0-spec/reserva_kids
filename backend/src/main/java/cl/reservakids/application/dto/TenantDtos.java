@@ -37,7 +37,18 @@ public final class TenantDtos {
             @Size(max = 500) String mpAccessToken,
             @Size(max = 500) String mpWebhookSecret,
             @Size(max = 512) String khipuApiKey,
-            Long khipuReceiverId) {}
+            Long khipuReceiverId,
+            /** V28: color primario en formato hex (#rrggbb). Vacio = no cambia. */
+            @Size(max = 7) String colorPrimario,
+            /** V28: titulo de la pestana del navegador. Vacio = no cambia. */
+            @Size(max = 120) String tituloPagina,
+            /** V28: ID del Meta Pixel (solo numeros). Vacio = no cambia. */
+            @Size(max = 50)
+            @jakarta.validation.constraints.Pattern(regexp = "\\d*",
+                    message = "El ID del Meta Pixel solo puede contener números")
+            String metaPixelId,
+            /** V29: politicas de cancelacion del negocio. Vacio = borra las politicas. */
+            String politicasCancelacion) {}
 
     /**
      * V26: teléfono de WhatsApp del salón, para el botón flotante de ayuda del mini-sitio

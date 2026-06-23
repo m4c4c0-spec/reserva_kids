@@ -3,13 +3,21 @@
 # ReservaKids — Deploy PRODUCCIÓN en VPS (Docker Compose + Caddy)
 # ──────────────────────────────────────────────────────────────────
 # Automatiza los pasos 0–7 del MANUAL_DESPLIEGUE.md:
-#   1. Verifica prerequisitos (docker, rclone, caddy, ufw)
+#   1. Verifica prerequisitos (docker, openssl)
 #   2. Genera secretos si no existen en .env
 #   3. Valida variables MANDATORIAS de producción
-#   4. Build del frontend (estáticos para Caddy)
-#   5. Levanta backend + BD (compose.prod.yml overlay)
-#   6.Verifica healthcheck
+#   4. Construye las imágenes Docker (backend + frontend Nuxt 3 SSR)
+#   5. Levanta el stack: db + backend + los DOS contenedores Nuxt SSR + backup
+#      (compose.prod.yml overlay; Caddy del host hace TLS y rutea por path)
+#   6. Verifica healthcheck de backend y de ambos front SSR
 #   7. Imprime checklist de pasos manuales restantes
+#
+# Arquitectura de frontend (micro-frontends Nuxt 3 SSR):
+#   - frontend-public → app pública de ventas/reservas   (127.0.0.1:3000)
+#   - frontend-panel  → Panel del Dueño / admin / cliente (127.0.0.1:3001)
+#   Ambos se construyen desde ./frontend y corren como procesos Node (Nitro).
+#   El Caddy del host (Caddyfile raíz) termina HTTPS y rutea por path a esos
+#   puertos. NO se levanta el contenedor 'caddy' (es solo para el modo all-in-docker).
 #
 # Uso:
 #   chmod +x scripts/deploy-prod.sh
@@ -56,6 +64,7 @@ gen_if_missing() {
 gen_if_missing POSTGRES_PASSWORD 24
 gen_if_missing JWT_SECRET 64
 gen_if_missing CRED_ENC_KEY 32
+gen_if_missing GRAFANA_ADMIN_PASSWORD 18
 
 # ── Variables MANDATORIAS de producción ───────────────────────────
 source_env() { grep "^$1=" .env 2>/dev/null | cut -d= -f2- | head -1 || true; }
@@ -114,15 +123,14 @@ set_default MAIL_SMTP_AUTH      "true"
 set_default MAIL_SMTP_STARTTLS  "true"
 set_default APP_TIMEZONE        "America/Santiago"
 
-# ── Frontend build ─────────────────────────────────────────────────
-DOMINIO=$(source_env CORS_ALLOWED_ORIGINS | sed 's|https://||')
+# ── Frontend: Nuxt 3 SSR (NO build local; lo construye Docker) ──────
+# La app migró de Vite SPA (estáticos en dist/) a Nuxt 3 SSR: dos contenedores Node
+# (frontend-public + frontend-panel) servidos por Caddy según el path. La imagen la
+# construye el propio docker compose (--build) desde frontend/Dockerfile; aquí ya no
+# se corre `npm run build` ni se genera dist/.
+DOMINIO=$(source_env CORS_ALLOWED_ORIGINS | sed 's|https://||; s|,.*||')
 API_URL_VAL=$(source_env API_URL)
-
-if [[ -d frontend ]]; then
-    info "Build del frontend (VITE_API_URL=$API_URL_VAL)..."
-    (cd frontend && echo "VITE_API_URL=$API_URL_VAL" > .env.production && npm ci && npm run build)
-    ok "Frontend build listo → frontend/dist/"
-fi
+info "Frontend: Nuxt SSR — lo construirá docker compose (frontend/Dockerfile)."
 
 # ── Docker Compose (prod overlay) ──────────────────────────────────
 COMPOSE_FILES="docker-compose.yml"
@@ -130,23 +138,64 @@ if [[ -f compose.prod.yml ]]; then
     COMPOSE_FILES="$COMPOSE_FILES -f compose.prod.yml"
 fi
 
-info "Levantando servicios de producción..."
-docker compose $COMPOSE_FILES --env-file .env up -d --build backend db
+# Servicios de producción explícitos: backend + BD + ambos frontends Nuxt SSR + backup.
+# Se EXCLUYEN a propósito mailpit (perfil dev), el stack de observabilidad
+# (grafana/prometheus/tempo/otel — exponen puertos sin auth) y el caddy dockerizado:
+# en prod, Caddy se instala en el host (ver checklist) y termina TLS con el Caddyfile raíz.
+PROD_SERVICES="db backend frontend-public frontend-panel backup"
 
-info "Esperando healthcheck..."
-for i in $(seq 1 30); do
-    status=$(docker compose $COMPOSE_FILES --env-file .env ps backend --format json 2>/dev/null \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Health',''))" 2>/dev/null || echo "")
-    if [[ "$status" == "healthy" ]]; then
-        ok "Backend healthy"
-        break
-    fi
-    sleep 2
-done
+DC() { docker compose $COMPOSE_FILES --env-file .env "$@"; }
+
+# Construir imágenes primero. frontend-panel reutiliza la imagen
+# reservakids-frontend:local que produce frontend-public, así que basta con
+# construir 'public' una vez (evita compilar Nuxt dos veces).
+info "Construyendo imágenes Docker (backend + frontend Nuxt SSR)..."
+DC build backend frontend-public backup
+ok "Imágenes construidas (backend + reservakids-frontend:local)"
+
+info "Levantando servicios de producción: $PROD_SERVICES"
+DC up -d $PROD_SERVICES
+
+# ── Healthchecks ───────────────────────────────────────────────────
+# `docker compose ps --format json` devuelve un objeto por servicio (a veces
+# como array según versión); parseamos ambas formas y leemos el campo Health.
+wait_healthy() {
+    local svc="$1" tries="${2:-40}"
+    info "Esperando healthcheck de '$svc'..."
+    for _ in $(seq 1 "$tries"); do
+        local status
+        status=$(DC ps "$svc" --format json 2>/dev/null | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read() or '{}')
+    if isinstance(d, list):
+        d = d[0] if d else {}
+    print(d.get('Health', '') if isinstance(d, dict) else '')
+except Exception:
+    print('')
+" 2>/dev/null || echo "")
+        if [[ "$status" == "healthy" ]]; then
+            ok "$svc healthy"
+            return 0
+        fi
+        sleep 3
+    done
+    err "$svc NO alcanzó estado healthy. Revisa: docker compose $COMPOSE_FILES logs $svc"
+    return 1
+}
+
+HEALTH_FAIL=0
+wait_healthy backend         || HEALTH_FAIL=1
+wait_healthy frontend-public || HEALTH_FAIL=1
+wait_healthy frontend-panel  || HEALTH_FAIL=1
 
 # ── Migraciones Flyway ─────────────────────────────────────────────
 info "Migraciones:"
-docker compose $COMPOSE_FILES --env-file .env logs backend 2>/dev/null | grep Flyway || true
+DC logs backend 2>/dev/null | grep Flyway || true
+
+if [[ "$HEALTH_FAIL" -ne 0 ]]; then
+    err "Uno o más servicios no quedaron healthy. Revisa los logs antes de continuar."
+fi
 
 # ── Checklist post-deploy ─────────────────────────────────────────
 echo ""

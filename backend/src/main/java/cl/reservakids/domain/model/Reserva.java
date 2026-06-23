@@ -62,6 +62,10 @@ public class Reserva {
     @Column(name = "fin")
     private OffsetDateTime fin;
 
+    /** ID del evento en Google Calendar asociado. Null si no se ha sincronizado. */
+    @Column(name = "google_event_id", length = 255)
+    private String googleEventId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EstadoReserva estado = EstadoReserva.PENDIENTE;
@@ -91,6 +95,10 @@ public class Reserva {
 
     @Column(name = "mp_init_point")
     private String mpInitPoint;
+
+    /** V29: momento en que el cliente aceptó las políticas de cancelación (escudo legal). */
+    @Column(name = "politicas_aceptadas_en")
+    private OffsetDateTime politicasAceptadasEn;
 
     /** Regla de dominio: solo transiciones válidas de la máquina de estados (§4.3). */
     public void transicionarA(EstadoReserva destino) {

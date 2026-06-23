@@ -1,6 +1,7 @@
 package cl.reservakids.infrastructure.web;
 
 import cl.reservakids.application.usecase.ReservaService;
+import cl.reservakids.application.usecase.WebhookFailureMonitor;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.infrastructure.adapter.KhipuAdapter;
@@ -38,19 +39,23 @@ public class KhipuWebhookController {
     private final TenantRepository tenantRepository;
     private final CredentialCipher credentialCipher;
     private final KhipuAdapter khipuAdapter;
+    private final WebhookFailureMonitor failureMonitor;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String IGNORADO = "ignorado";
+    private static final String CANAL_KHIPU = "Khipu";
 
     @Value("${app.khipu.webhook-signature-max-age-minutes:5}")
     private int signatureMaxAgeMinutes;
 
     public KhipuWebhookController(ReservaService reservaService, TenantRepository tenantRepository,
-                                  CredentialCipher credentialCipher, KhipuAdapter khipuAdapter) {
+                                   CredentialCipher credentialCipher, KhipuAdapter khipuAdapter,
+                                   WebhookFailureMonitor failureMonitor) {
         this.reservaService = reservaService;
         this.tenantRepository = tenantRepository;
         this.credentialCipher = credentialCipher;
         this.khipuAdapter = khipuAdapter;
+        this.failureMonitor = failureMonitor;
     }
 
     @PostMapping("/{tenantId}")
@@ -60,6 +65,7 @@ public class KhipuWebhookController {
             raw = request.getInputStream().readAllBytes();
         } catch (Exception e) {
             log.error("Khipu webhook tenant {}: no se pudo leer el body", tenantId);
+            failureMonitor.registrarFallo(CANAL_KHIPU, e.getMessage());
             return ResponseEntity.badRequest().body("body inválido");
         }
 
@@ -67,6 +73,7 @@ public class KhipuWebhookController {
         if (tenant == null || !Tenant.ESTADO_ACTIVO.equals(tenant.getEstado())
                 || tenant.getKhipuApiKey() == null) {
             log.warn("Khipu webhook: tenant {} no encontrado, no ACTIVO o sin API key", tenantId);
+            failureMonitor.registrarFallo(CANAL_KHIPU, "Tenant no configurado");
             return ResponseEntity.badRequest().body("tenant no configurado");
         }
 
@@ -81,6 +88,7 @@ public class KhipuWebhookController {
             body = objectMapper.readTree(raw);
         } catch (Exception e) {
             log.warn("Khipu webhook tenant {}: body no es JSON válido", tenantId);
+            failureMonitor.registrarFallo(CANAL_KHIPU, e.getMessage());
             return ResponseEntity.badRequest().body("json inválido");
         }
 
@@ -90,11 +98,23 @@ public class KhipuWebhookController {
         }
 
         // Estado canónico vía GET (no nos fiamos solo del body del webhook).
-        KhipuAdapter.KhipuPago pago = khipuAdapter.obtenerPago(paymentId, tenant).orElse(null);
-        if (pago == null) {
-            log.warn("Khipu webhook: no se pudo obtener el pago {}", paymentId);
+        KhipuAdapter.KhipuPago pago;
+        try {
+            pago = khipuAdapter.obtenerPago(paymentId, tenant).orElse(null);
+        } catch (Exception e) {
+            log.error("Error consultando pago Khipu {} para tenant {}: {}", paymentId, tenantId, e.getMessage());
+            failureMonitor.registrarFallo(CANAL_KHIPU, e.getMessage());
             return ResponseEntity.internalServerError().body("no se pudo consultar el pago");
         }
+        if (pago == null) {
+            log.warn("Khipu webhook: no se pudo obtener el pago {}", paymentId);
+            failureMonitor.registrarFallo(CANAL_KHIPU, "Pago no encontrado: " + paymentId);
+            return ResponseEntity.internalServerError().body("no se pudo consultar el pago");
+        }
+
+        // La API de Khipu respondió → el canal está sano
+        failureMonitor.registrarExito(CANAL_KHIPU);
+
         if (!"done".equals(pago.status())) {
             log.info("Khipu webhook: pago {} con estado '{}' (no confirma)", paymentId, pago.status());
             return ResponseEntity.ok(IGNORADO);

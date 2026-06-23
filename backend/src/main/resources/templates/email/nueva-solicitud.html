@@ -1,0 +1,32 @@
+<th:block th:fragment="contenido">
+  <p style="margin:0 0 12px"><strong>¡Tienes una nueva solicitud de reserva!</strong></p>
+
+  <table width="100%" cellpadding="8" cellspacing="0" style="background:#faf8fd;border-radius:12px;margin:16px 0">
+    <tr><td style="color:#7a6e85;font-size:13px;width:100px">Reserva #</td><td style="font-weight:700" th:text="${reservaId}">123</td></tr>
+    <tr><td style="color:#7a6e85;font-size:13px">Cliente</td><td style="font-weight:700" th:text="${clienteNombre}">Juan Pérez</td></tr>
+    <tr th:if="${clienteTelefono != null}"><td style="color:#7a6e85;font-size:13px">Teléfono</td><td th:text="${clienteTelefono}">+56912345678</td></tr>
+    <tr th:if="${numNinos > 0}"><td style="color:#7a6e85;font-size:13px">Niños</td><td th:text="${numNinos}">15</td></tr>
+    <tr th:if="${comuna != null}"><td style="color:#7a6e85;font-size:13px">Comuna</td><td th:text="${comuna}">Victoria</td></tr>
+    <tr th:if="${comentarios != null}"><td style="color:#7a6e85;font-size:13px">Mensaje</td><td th:text="${comentarios}">Quiero cotizar...</td></tr>
+  </table>
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
+    <tr>
+      <td align="center">
+        <a th:href="${panelUrl}"
+           style="display:inline-block;background:linear-gradient(135deg,#b5007d,#ff6b35);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:100px;font-size:16px;font-weight:700;letter-spacing:-0.3px">
+          Ver en el panel
+        </a>
+      </td>
+    </tr>
+  </table>
+
+  <div th:if="${linkWhatsApp != null}" style="background:#e8f5e9;border-radius:12px;padding:16px;margin:16px 0;text-align:center">
+    <p style="margin:0 0 8px;font-size:13px;color:#2e7d32;font-weight:700">Responder rápido por WhatsApp</p>
+    <a th:href="${linkWhatsApp}" style="color:#25D366;font-size:14px;font-weight:700;text-decoration:none">💬 Abrir chat con el cliente</a>
+  </div>
+
+  <p style="margin:0;font-size:13px;color:#7a6e85">
+    ⏰ La fecha queda reservada por <strong>48 horas</strong>. Si no respondes, se libera automáticamente.
+  </p>
+</th:block>

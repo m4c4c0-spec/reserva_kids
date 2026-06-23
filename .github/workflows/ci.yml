@@ -27,7 +27,7 @@ jobs:
         run: mvn -B verify
 
   frontend:
-    name: Frontend (Vue 3 + Vite)
+    name: Frontend (Nuxt 3 SSR)
     runs-on: ubuntu-latest
     defaults:
       run:

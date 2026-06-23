@@ -3,6 +3,7 @@ package cl.reservakids.infrastructure.web;
 import cl.reservakids.application.dto.AdminDtos.*;
 import cl.reservakids.application.dto.AuthDtos;
 import cl.reservakids.application.usecase.AdminAuthService;
+import cl.reservakids.infrastructure.oauth2.OAuth2Service;
 import cl.reservakids.infrastructure.security.AuthPrincipal;
 import cl.reservakids.infrastructure.security.RefreshCookieService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,6 +22,7 @@ public class AdminAuthController {
 
     private final AdminAuthService adminAuthService;
     private final RefreshCookieService refreshCookieService;
+    private final OAuth2Service oauth2Service;
 
     @PostMapping("/login")
     public AdminTokenResponse login(@Valid @RequestBody LoginAdminRequest req, HttpServletResponse res) {
@@ -64,5 +66,28 @@ public class AdminAuthController {
     /** El refresh token vive solo en la cookie HttpOnly; el body no lo expone. */
     private static AdminTokenResponse sinRefresh(AdminTokenResponse t) {
         return new AdminTokenResponse(t.accessToken(), null, t.email(), t.nombre());
+    }
+
+    /** OAuth2/SSO: obtiene la URL de autorización para el proveedor indicado. */
+    @GetMapping("/oauth2/{provider}/authorize")
+    public ResponseEntity<AuthDtos.OAuth2AuthorizeResponse> oauth2Authorize(
+            @PathVariable String provider) {
+        String url = oauth2Service.buildAuthorizeUrl(provider, "admin");
+        if (url == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(new AuthDtos.OAuth2AuthorizeResponse(url));
+    }
+
+    /** OAuth2/SSO: canjea el código del proveedor por tokens de admin. */
+    @PostMapping("/oauth2/{provider}")
+    public AdminTokenResponse oauth2Login(
+            @PathVariable String provider,
+            @Valid @RequestBody AuthDtos.OAuth2Request req,
+            HttpServletResponse res) {
+        oauth2Service.verifyState(req.state(), "admin", provider);
+        AdminTokenResponse tokens = adminAuthService.oauth2Login(provider, req.code(), req.redirectUri());
+        refreshCookieService.setear(res, RefreshCookieService.COOKIE_ADMIN, tokens.refreshToken());
+        return sinRefresh(tokens);
     }
 }

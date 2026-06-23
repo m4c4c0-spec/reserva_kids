@@ -4,6 +4,7 @@ import cl.reservakids.domain.model.Cliente;
 import cl.reservakids.domain.model.CuentaCliente;
 import cl.reservakids.domain.model.Reserva;
 import cl.reservakids.domain.model.ReservaServicio;
+import cl.reservakids.domain.model.Staff;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.model.Usuario;
 
@@ -11,36 +12,28 @@ import java.util.List;
 
 /**
  * Puerto de notificaciones (RF-08). La implementación de infraestructura decide el canal:
- * MVP = log + email simple; luego Resend/SMTP/Twilio sin tocar los casos de uso.
+ * HTML email con Thymeleaf; sin SMTP → degrada a log.
  */
 public interface NotificacionPort {
 
-    void nuevaSolicitud(Tenant tenant, Reserva reserva, Cliente cliente);
+    /** Aviso al dueño de nueva solicitud pública. linkWhatsApp viene del adapter de WhatsApp. */
+    void nuevaSolicitud(Tenant tenant, Reserva reserva, Cliente cliente, String linkWhatsApp);
 
     /** Email al cliente confirmando que su cita por hora quedó agendada (tras el pago). */
     void citaConfirmada(Tenant tenant, Reserva cita, Cliente cliente, List<ReservaServicio> servicios);
 
-    /** Link wa.me pre-armado para que el dueño responda al cliente (RF-08). */
-    String linkWhatsApp(Cliente cliente, Reserva reserva);
-
-    /**
-     * Falla 1.3 (revisión a 5 años): enlace de recuperación de contraseña. El token viaja
-     * en claro UNA vez por este canal; el adaptador arma el link con la URL del frontend.
-     */
+    /** Email de recuperación de contraseña (dueño). */
     void resetPassword(Usuario usuario, String tokenPlano);
 
     /** Reset de contraseña para cuentas de cliente (apoderados). */
     void resetPasswordCliente(CuentaCliente cuenta, String tokenPlano);
 
-    /**
-     * V27: magic link de login sin contraseña. El token viaja en claro UNA vez por este canal
-     * y el adaptador arma el link con la URL del frontend ({@code /magic#token=...}).
-     */
+    /** Magic link de login sin contraseña. */
     void magicLink(Usuario usuario, String tokenPlano);
 
-    /**
-     * Recordatorio 24h antes del evento: avisa al cliente de los servicios que contrató
-     * y la hora de la cita o cumpleaños.
-     */
+    /** Recordatorio 24h antes del evento. */
     void recordatorio(Tenant tenant, Reserva reserva, Cliente cliente, List<ReservaServicio> servicios);
+
+    /** Email de bienvenida al staff con sus credenciales de acceso. */
+    void staffBienvenida(Staff staff, String passwordPlana, String negocioNombre);
 }
