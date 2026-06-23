@@ -70,3 +70,31 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+
+  # Calidad y mantenibilidad sostenida (SonarCloud, org m4c4c0-spec). Sube el análisis
+  # del backend Java (con cobertura JaCoCo) + frontend a SonarCloud, que evalúa la
+  # quality gate "Sonar way" sobre el CÓDIGO NUEVO de cada push/PR.
+  # Requiere el secret de repo SONAR_TOKEN (Settings → Secrets and variables → Actions).
+  sonarcloud:
+    name: SonarCloud (calidad + mantenibilidad)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # blame SCM completo → detección precisa de "código nuevo"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      # Solo unitarios + reporte JaCoCo (jacoco.xml): compila main/test y produce la
+      # cobertura que lee el scanner. Evita los *IT con Testcontainers (ya cubiertos en
+      # el job backend) para no duplicar ese coste aquí.
+      - name: Compilar y cobertura (unitarios)
+        working-directory: backend
+        run: mvn -B test jacoco:report
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
