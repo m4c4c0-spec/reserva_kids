@@ -811,3 +811,38 @@ Tag **v0.1.0**. Versiones alineadas: `pom.xml` `0.1.0`, `package.json` `0.1.0`.
 > **Estado al cierre del 2026-06-23:** working tree limpio. Migraciones al día en **V30**.
 > Stack operativo completo: 6 servicios Docker (db, mailpit, backend, frontend, caddy, backup).
 > 128 tests backend verdes. Frontend PWA funcional con 4 roles de acceso (DUENO, ADMIN, CLIENTE, STAFF).
+
+---
+
+## Sesión 2026-06-23 (tarde) — Migración Nuxt 3 SSR + capacidades nuevas + readiness de deploy
+
+> **Corrección al cierre previo:** el bloque anterior ("working tree limpio, V30, frontend Vite/PWA")
+> quedó desfasado. Esta sesión cierra una migración grande que NO estaba commiteada.
+
+### Frontend — migración Vite SPA → **Nuxt 3 SSR**
+- `vue-router` + estáticos `dist/` → Nuxt 3 con file-based routing (`src/pages`), `layouts/`,
+  middleware global (`auth.global.ts`, `single-tenant.global.ts`).
+- Dos unidades de deploy SSR (`frontend-public` :3000 / `frontend-panel` :3001) ruteadas por Caddy.
+- Single-tenant ahora por env runtime (`NUXT_PUBLIC_SINGLE_TENANT_SLUG`), no por build.
+- Eliminado el código muerto de la migración: `src/views/` (legacy) y duplicados `frontend/pages/`, `frontend/app.vue`.
+
+### Backend — capacidades nuevas
+- RBAC (roles/permisos, `PermissionEvaluator` + `@PreAuthorize`), Staff, Invitados/RSVP, Caja,
+  OAuth2 SSO (Google), sync Google Calendar + feed iCal público, Idempotency-Key, monitor de
+  fallos de webhook, bootstrap single-tenant. Migraciones **V28..V34**.
+
+### Deploy / seguridad
+- `deploy-prod.sh` reescrito para Nuxt SSR (Docker construye; levanta db+backend+2 front SSR+backup).
+- **Fix de exposición crítico:** Compose fusiona listas de `ports`; sin `!override` los binds a
+  `127.0.0.1` de `compose.prod.yml` no quitaban los `0.0.0.0` del base → Postgres/backend/Grafana
+  quedaban expuestos en el VPS. Añadido `!override`; observabilidad y Grafana (sin admin anónimo) en loopback.
+- `docker-compose.yml`: quitado `depends_on: mailpit` del backend (invalidaba el proyecto en prod).
+- Fix test `ReservaServiceTest` (stub `whatsapp.linkWhatsApp`). **`mvn verify`: 98 unit + 34 IT verdes.**
+
+### CI / PR
+- PR #14 contra `main`. Fixes de CI: `package-lock.json` resincronizado (`npm ci` fallaba) y
+  permisos `pull-requests: read` para gitleaks (fallaba con 403).
+
+### Estado real al cierre
+- Migraciones al día en **V34**. Backend `mvn verify` verde. Frontend Nuxt SSR construye.
+- Pendiente operativo: comprar dominio del cliente y ejecutar `deploy-prod.sh` en el VPS.
