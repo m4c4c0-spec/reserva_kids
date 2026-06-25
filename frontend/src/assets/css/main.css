@@ -357,6 +357,12 @@ body {
 
 @media (max-width: 640px) {
   .flip-card {
-    height: 360px;
+    height: 340px;
+  }
+}
+
+@media (max-width: 380px) {
+  .flip-card {
+    height: 390px;
   }
 }
