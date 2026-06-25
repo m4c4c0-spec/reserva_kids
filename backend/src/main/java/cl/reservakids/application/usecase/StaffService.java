@@ -14,7 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,8 +43,21 @@ public class StaffService {
 
     @Transactional(readOnly = true)
     public List<StaffResponse> listar(Long tenantId) {
-        return staffRepository.findByTenantIdOrderByNombre(tenantId).stream()
-                .map(this::aResponse).toList();
+        List<Staff> todos = staffRepository.findByTenantIdOrderByNombre(tenantId);
+
+        // Batch-load roles: una sola query por todos los rolPersonalId no nulos
+        Set<Long> rolIds = todos.stream()
+                .map(Staff::getRolPersonalId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        Map<Long, String> nombresPorRolId = rolIds.isEmpty()
+                ? Map.of()
+                : rolPersonalRepository.findAllById(rolIds).stream()
+                        .collect(Collectors.toMap(RolPersonal::getId, RolPersonal::getNombre));
+
+        return todos.stream()
+                .map(s -> aResponse(s, nombresPorRolId))
+                .toList();
     }
 
     @Transactional
@@ -75,7 +92,7 @@ public class StaffService {
                 .map(Tenant::getNombre).orElse("ReservaKids");
         notificacion.staffBienvenida(guardado, req.password(), negocioNombre);
 
-        return aResponse(guardado);
+        return aResponse(guardado, null);
     }
 
     @Transactional
@@ -94,7 +111,7 @@ public class StaffService {
             s.setRolPersonalId(rol.getId());
             s.setRol(rol.getNombre());
         }
-        return aResponse(staffRepository.save(s));
+        return aResponse(staffRepository.save(s), null);
     }
 
     @Transactional
@@ -109,18 +126,20 @@ public class StaffService {
         LocalDate fecha = LocalDate.parse(fechaStr);
         OffsetDateTime inicio = fecha.atStartOfDay(ZoneId.of("America/Santiago")).toOffsetDateTime();
         OffsetDateTime fin = fecha.plusDays(1).atStartOfDay(ZoneId.of("America/Santiago")).toOffsetDateTime();
-        return reservaRepository.findByTenantIdOrderByCreadaEnDesc(tenantId).stream()
-                .filter(r -> r.getInicio() != null && !r.getInicio().isBefore(inicio) && r.getInicio().isBefore(fin))
-                .filter(r -> "CONFIRMADA".equals(r.getEstado().name()) || "REALIZADA".equals(r.getEstado().name()))
-                .toList();
+        return reservaRepository.findEventosDelDia(tenantId, inicio, fin,
+                List.of(EstadoReserva.CONFIRMADA, EstadoReserva.REALIZADA));
     }
 
-    private StaffResponse aResponse(Staff s) {
+    private StaffResponse aResponse(Staff s, Map<Long, String> nombresPorRolId) {
         String rolNombre = s.getRol();
         if (s.getRolPersonalId() != null) {
-            rolNombre = rolPersonalRepository.findById(s.getRolPersonalId())
-                    .map(RolPersonal::getNombre)
-                    .orElse(s.getRol());
+            if (nombresPorRolId != null) {
+                rolNombre = nombresPorRolId.getOrDefault(s.getRolPersonalId(), s.getRol());
+            } else {
+                rolNombre = rolPersonalRepository.findById(s.getRolPersonalId())
+                        .map(RolPersonal::getNombre)
+                        .orElse(s.getRol());
+            }
         }
         return new StaffResponse(s.getId(), s.getNombre(), s.getEmail(),
                 s.getTelefono(), s.getRol(), s.getRolPersonalId(), rolNombre,

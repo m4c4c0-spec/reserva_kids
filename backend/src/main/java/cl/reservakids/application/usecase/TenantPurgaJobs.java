@@ -39,6 +39,7 @@ public class TenantPurgaJobs {
     private final ServicioRepository servicioRepository;
     private final UsuarioRepository usuarioRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final DistributedLockPort distributedLock;
     private final Clock clock;
 
     @Value("${app.tenants.purga-dias-tras-cierre}")
@@ -56,21 +57,26 @@ public class TenantPurgaJobs {
     @Scheduled(cron = "0 30 5 2 * *")
     @Transactional
     public void purgarTenantsCerrados() {
+        if (!distributedLock.tryAcquire("purgarTenantsCerrados")) return;
         OffsetDateTime limite = OffsetDateTime.now(clock).minusDays(purgaDiasTrasCierre);
         for (Tenant tenant : tenantRepository.findByEstadoAndCerradoEnBefore(Tenant.ESTADO_CERRADO, limite)) {
-            Long id = tenant.getId();
-            // Orden gobernado por las FK: pago → reserva → bloque/cliente/servicio → tokens → usuario
-            pagoRepository.eliminarDeTenant(id);
-            reservaRepository.eliminarDeTenant(id);
-            bloqueRepository.eliminarDeTenant(id);
-            clienteRepository.eliminarDeTenant(id);
-            servicioRepository.eliminarDeTenant(id);
-            refreshTokenRepository.eliminarDeTenant(id);
-            passwordResetTokenRepository.eliminarDeTenant(id);
-            usuarioRepository.eliminarDeTenant(id);
-            tenantRepository.delete(tenant);
-            log.info("Offboarding: tenant '{}' (#{}) purgado físicamente ({} días tras su cierre)",
-                    tenant.getSlug(), id, purgaDiasTrasCierre);
+            try {
+                Long id = tenant.getId();
+                // Orden gobernado por las FK: pago → reserva → bloque/cliente/servicio → tokens → usuario
+                pagoRepository.eliminarDeTenant(id);
+                reservaRepository.eliminarDeTenant(id);
+                bloqueRepository.eliminarDeTenant(id);
+                clienteRepository.eliminarDeTenant(id);
+                servicioRepository.eliminarDeTenant(id);
+                refreshTokenRepository.eliminarDeTenant(id);
+                passwordResetTokenRepository.eliminarDeTenant(id);
+                usuarioRepository.eliminarDeTenant(id);
+                tenantRepository.delete(tenant);
+                log.info("Offboarding: tenant '{}' (#{}) purgado físicamente ({} días tras su cierre)",
+                        tenant.getSlug(), id, purgaDiasTrasCierre);
+            } catch (Exception e) {
+                log.error("Error al purgar tenant #{} ({}): {}", tenant.getId(), tenant.getSlug(), e.getMessage());
+            }
         }
     }
 }

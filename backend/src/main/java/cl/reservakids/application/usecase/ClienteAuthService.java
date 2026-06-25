@@ -10,7 +10,6 @@ import cl.reservakids.domain.model.RutValidator;
 import cl.reservakids.domain.repository.CuentaClienteRepository;
 import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenClienteRepository;
-import cl.reservakids.infrastructure.oauth2.OAuth2Service;
 import cl.reservakids.infrastructure.oauth2.OAuth2UserInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,13 +18,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -45,7 +40,8 @@ public class ClienteAuthService {
     private final TokenPort tokenPort;
     private final NotificacionPort notificacion;
     private final AuthEventPort authEvent;
-    private final OAuth2Service oauth2Service;
+    private final OAuth2Port oauth2Port;
+    private final AuthCrypto authCrypto;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.jwt.refresh-days}")
@@ -122,7 +118,7 @@ public class ClienteAuthService {
      */
     @Transactional(noRollbackFor = BadCredentialsException.class)
     public ClienteTokenResponse refresh(String refreshTokenPlano) {
-        RefreshTokenCliente actual = refreshTokenRepository.findByTokenHash(sha256(refreshTokenPlano))
+        RefreshTokenCliente actual = refreshTokenRepository.findByTokenHash(authCrypto.hashToken(refreshTokenPlano))
                 .orElseThrow(() -> new BadCredentialsException("Refresh token inválido o expirado"));
         if (actual.isRevocado()) {
             refreshTokenRepository.revocarTodosDeCuenta(actual.getCuentaClienteId());
@@ -152,7 +148,7 @@ public class ClienteAuthService {
                     AuthEvent.LOGOUT, AuthEvent.SUCCESS, null);
         }
         if (refreshTokenPlano != null && !refreshTokenPlano.isBlank()) {
-            refreshTokenRepository.findByTokenHash(sha256(refreshTokenPlano))
+            refreshTokenRepository.findByTokenHash(authCrypto.hashToken(refreshTokenPlano))
                     .ifPresent(t -> refreshTokenRepository.revocarTodosDeCuenta(t.getCuentaClienteId()));
         }
     }
@@ -175,7 +171,7 @@ public class ClienteAuthService {
             PasswordResetToken token = new PasswordResetToken();
             token.setId(UUID.randomUUID());
             token.setCuentaClienteId(cuenta.getId());
-            token.setTokenHash(sha256(tokenPlano));
+            token.setTokenHash(authCrypto.hashToken(tokenPlano));
             token.setExpiraEn(OffsetDateTime.now().plusMinutes(resetMinutos));
             passwordResetTokenRepository.save(token);
 
@@ -191,7 +187,7 @@ public class ClienteAuthService {
      */
     @Transactional
     public void confirmarResetPassword(String tokenPlano, String nuevaPassword) {
-        PasswordResetToken token = passwordResetTokenRepository.findByTokenHash(sha256(tokenPlano))
+        PasswordResetToken token = passwordResetTokenRepository.findByTokenHash(authCrypto.hashToken(tokenPlano))
                 .filter(t -> t.vigente(OffsetDateTime.now()))
                 .orElseThrow(() -> new BadCredentialsException(
                         "El enlace es inválido o ya venció; pide uno nuevo"));
@@ -211,7 +207,7 @@ public class ClienteAuthService {
         RefreshTokenCliente refresh = new RefreshTokenCliente();
         refresh.setId(UUID.randomUUID());
         refresh.setCuentaClienteId(cuenta.getId());
-        refresh.setTokenHash(sha256(refreshPlano));
+        refresh.setTokenHash(authCrypto.hashToken(refreshPlano));
         refresh.setExpiraEn(OffsetDateTime.now().plusDays(refreshDays));
         refreshTokenRepository.save(refresh);
 
@@ -226,7 +222,7 @@ public class ClienteAuthService {
 
     @Transactional
     public ClienteTokenResponse oauth2Login(String provider, String code, String redirectUri) {
-        OAuth2UserInfo info = oauth2Service.verify(provider, code, redirectUri);
+        OAuth2UserInfo info = oauth2Port.verify(provider, code, redirectUri);
         String email = normalizarEmail(info.email());
 
         var existingByProvider = cuentaClienteRepository.findByOauthProviderAndOauthProviderId(
@@ -261,14 +257,5 @@ public class ClienteAuthService {
         authEvent.registrar(AuthEvent.ACTOR_CLIENTE, cuenta.getId(), email,
                 AuthEvent.LOGIN, AuthEvent.SUCCESS, "Registro OAuth2 " + provider);
         return emitirTokens(cuenta);
-    }
-
-    private static String sha256(String valor) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(md.digest(valor.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 }

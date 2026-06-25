@@ -33,7 +33,7 @@ public class TenantService {
     private final ReservaRepository reservaRepository;
     private final UsuarioRepository usuarioRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final cl.reservakids.infrastructure.security.CredentialCipher credentialCipher;
+    private final CredentialCipherPort credentialCipher;
     private final TenantExportService tenantExportService;
     private final AuditPort audit;
     private final Clock clock;

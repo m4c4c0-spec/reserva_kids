@@ -1,6 +1,7 @@
 package cl.reservakids.application;
 
 import cl.reservakids.application.dto.AuthDtos.RefreshRequest;
+import cl.reservakids.application.usecase.AuthCrypto;
 import cl.reservakids.application.usecase.AuthEventPort;
 import cl.reservakids.application.usecase.AuthService;
 import cl.reservakids.application.usecase.HorarioAtencionService;
@@ -11,6 +12,7 @@ import cl.reservakids.domain.model.Usuario;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.domain.repository.UsuarioRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,10 +41,15 @@ class AuthServiceTest {
     @Mock PasswordEncoder passwordEncoder;
     @Mock TokenPort tokenPort;
     @Mock AuthEventPort authEvent;
+    @Mock AuthCrypto authCrypto;
 
     @InjectMocks AuthService service;
 
-    /** Fix #2 (revisión de código): reusar un refresh rotado = robo → muere toda la familia. */
+    @BeforeEach
+    void stubAuthCrypto() {
+        lenient().when(authCrypto.hashToken(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
+
     @Test
     void reusoDeRefreshRevocadoRevocaTodaLaFamilia() {
         RefreshToken robado = token(5L, true, OffsetDateTime.now().plusDays(3));

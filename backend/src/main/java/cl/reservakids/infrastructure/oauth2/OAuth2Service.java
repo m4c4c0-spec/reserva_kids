@@ -1,5 +1,6 @@
 package cl.reservakids.infrastructure.oauth2;
 
+import cl.reservakids.application.usecase.OAuth2Port;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
@@ -10,7 +11,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 @Service
-public class OAuth2Service {
+public class OAuth2Service implements OAuth2Port {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 

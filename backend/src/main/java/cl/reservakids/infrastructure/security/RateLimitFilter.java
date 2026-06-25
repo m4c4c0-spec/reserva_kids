@@ -18,6 +18,8 @@ import java.time.Instant;
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
+    private static final String GLOBAL_IP = "__global__";
+
     @Value("${app.rate-limit.public-max-por-minuto:30}")
     private int publicMaxPorMinuto;
 
@@ -35,6 +37,27 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Value("${app.rate-limit.webhook-max-por-minuto:5}")
     private int webhookMaxPorMinuto;
+
+    @Value("${app.rate-limit.auth-register-max-por-minuto:3}")
+    private int authRegisterMaxPorMinuto;
+
+    @Value("${app.rate-limit.cliente-auth-register-max-por-minuto:3}")
+    private int clienteAuthRegisterMaxPorMinuto;
+
+    @Value("${app.rate-limit.public-reservas-max-por-minuto:5}")
+    private int publicReservasMaxPorMinuto;
+
+    @Value("${app.rate-limit.auth-register-global-max-por-minuto:60}")
+    private int authRegisterGlobalMaxPorMinuto;
+
+    @Value("${app.rate-limit.cliente-auth-register-global-max-por-minuto:60}")
+    private int clienteAuthRegisterGlobalMaxPorMinuto;
+
+    @Value("${app.rate-limit.public-reservas-global-max-por-minuto:100}")
+    private int publicReservasGlobalMaxPorMinuto;
+
+    @Value("${app.rate-limit.auth-global-max-por-minuto:200}")
+    private int authGlobalMaxPorMinuto;
 
     @Value("${app.security.trust-proxy}")
     private boolean trustProxy;
@@ -69,6 +92,23 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         long minutoActual = Instant.now().getEpochSecond() / 60;
 
+        int maxGlobal = resolverLimiteGlobal(rutaTipo);
+        if (maxGlobal > 0) {
+            try {
+                int contadorGlobal = bucketRepository.incrementarYContar(GLOBAL_IP, "global-" + rutaTipo, minutoActual, maxGlobal);
+                if (contadorGlobal > maxGlobal) {
+                    response.setStatus(429);
+                    response.setHeader("Retry-After", String.valueOf(60 - (int) (Instant.now().getEpochSecond() % 60)));
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write(
+                            "{\"status\":429,\"error\":\"Too Many Requests\",\"message\":\"Demasiadas solicitudes, intenta en un minuto\"}");
+                    return;
+                }
+            } catch (Exception e) {
+                log.warn("Rate limit global no disponible (BD), continuando: {}", e.getMessage());
+            }
+        }
+
         int contador;
         try {
             // H2: conteo ATÓMICO en la BD (compartido entre instancias), no en memoria local.
@@ -97,32 +137,56 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private String resolverTipoRuta(HttpServletRequest request) {
         String uri = request.getRequestURI();
+        String metodo = request.getMethod();
         if (uri.startsWith("/api/public/webhooks/")) return "webhook";
         if (uri.startsWith("/api/admin-auth/")) return "admin-auth";
+        if ("POST".equals(metodo) && uri.equals("/api/auth/register")) return "auth-register";
         if (uri.startsWith("/api/auth/")) return "auth";
+        if ("POST".equals(metodo) && uri.equals("/api/cliente-auth/register")) return "cliente-auth-register";
         if (uri.startsWith("/api/cliente-auth/")) return "cliente-auth";
+        if ("POST".equals(metodo) && uri.matches("/api/public/[^/]+/reservas")) return "public-reservas";
         if (uri.startsWith("/api/public/")) return "public";
         return "panel";
     }
 
     private int resolverLimite(HttpServletRequest request) {
         String uri = request.getRequestURI();
+        String metodo = request.getMethod();
         if (uri.startsWith("/api/public/webhooks/")) {
             return webhookMaxPorMinuto;
         }
         if (uri.startsWith("/api/admin-auth/")) {
             return adminAuthMaxPorMinuto;
         }
+        if ("POST".equals(metodo) && uri.equals("/api/auth/register")) {
+            return authRegisterMaxPorMinuto;
+        }
         if (uri.startsWith("/api/auth/")) {
             return authMaxPorMinuto;
         }
+        if ("POST".equals(metodo) && uri.equals("/api/cliente-auth/register")) {
+            return clienteAuthRegisterMaxPorMinuto;
+        }
         if (uri.startsWith("/api/cliente-auth/")) {
             return clienteAuthMaxPorMinuto;
+        }
+        if ("POST".equals(metodo) && uri.matches("/api/public/[^/]+/reservas")) {
+            return publicReservasMaxPorMinuto;
         }
         if (uri.startsWith("/api/public/")) {
             return publicMaxPorMinuto;
         }
         return panelMaxPorMinuto;
+    }
+
+    private int resolverLimiteGlobal(String rutaTipo) {
+        return switch (rutaTipo) {
+            case "auth-register" -> authRegisterGlobalMaxPorMinuto;
+            case "cliente-auth-register" -> clienteAuthRegisterGlobalMaxPorMinuto;
+            case "public-reservas" -> publicReservasGlobalMaxPorMinuto;
+            case "auth" -> authGlobalMaxPorMinuto;
+            default -> 0;
+        };
     }
 
     private void limpiarPeriodicamente(long minutoActual) {

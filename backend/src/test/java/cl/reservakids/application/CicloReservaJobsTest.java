@@ -1,11 +1,13 @@
 package cl.reservakids.application;
 
 import cl.reservakids.application.usecase.CicloReservaJobs;
+import cl.reservakids.application.usecase.DistributedLockPort;
 import cl.reservakids.domain.model.EstadoBloque;
 import cl.reservakids.domain.model.EstadoReserva;
 import cl.reservakids.domain.model.Reserva;
 import cl.reservakids.domain.repository.BloqueDisponibleRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -30,9 +32,16 @@ class CicloReservaJobsTest {
 
     @Mock ReservaRepository reservaRepository;
     @Mock BloqueDisponibleRepository bloqueRepository;
+    @Mock DistributedLockPort distributedLock;
     @Spy Clock clock = Clock.fixed(Instant.parse("2026-06-10T12:00:00Z"), ZoneOffset.UTC);
 
     @InjectMocks CicloReservaJobs jobs;
+
+    @BeforeEach
+    void lockSiempreDisponible() {
+        // Cada job toma el lock distribuido antes de operar; en unit test siempre lo concede.
+        lenient().when(distributedLock.tryAcquire(any())).thenReturn(true);
+    }
 
     @Test
     void cancelaPendientesVencidasYLiberaBloques() {

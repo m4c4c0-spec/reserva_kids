@@ -42,13 +42,16 @@ app:
     purga-dias-tras-cierre: 90
   zona-horaria: America/Santiago
   rate-limit:
-    # Límites altos a propósito: en los IT, MockMvc comparte una sola IP (127.0.0.1),
-    # así que los tests con varios logins (AdminControllerIT) o varios webhooks
-    # (WebhookMercadoPagoIT) chocarían con los topes de producción y darían 429.
-    # El rate limiting se prueba aislado en RateLimitFilterTest; aquí solo estorbaría.
     public-max-por-minuto: 100000
+    public-reservas-max-por-minuto: 100000
+    public-reservas-global-max-por-minuto: 100000
     auth-max-por-minuto: 100000
+    auth-global-max-por-minuto: 100000
+    auth-register-max-por-minuto: 100000
+    auth-register-global-max-por-minuto: 100000
     cliente-auth-max-por-minuto: 100000
+    cliente-auth-register-max-por-minuto: 100000
+    cliente-auth-register-global-max-por-minuto: 100000
     admin-auth-max-por-minuto: 100000
     panel-max-por-minuto: 100000
     webhook-max-por-minuto: 100000
