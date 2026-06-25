@@ -34,7 +34,7 @@
     "eslint-plugin-vue": "^9.33.0",
     "globals": "^17.6.0",
     "jsdom": "^25.0.1",
-    "nuxt-security": "^2.6.0",
+    "nuxt-security": "~2.5.1",
     "prettier": "^3.8.4",
     "tailwindcss": "^4.3.1",
     "vitest": "^2.1.9"
