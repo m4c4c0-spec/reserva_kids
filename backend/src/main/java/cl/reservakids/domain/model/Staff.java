@@ -47,10 +47,6 @@ public class Staff {
     @Column(nullable = false)
     private boolean activo = true;
 
-    @Deprecated
-    @Column(name = "whatsapp_recordatorio", nullable = false)
-    private boolean whatsappRecordatorio = true;
-
     @Column(name = "creado_en", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime creadoEn;
 }
