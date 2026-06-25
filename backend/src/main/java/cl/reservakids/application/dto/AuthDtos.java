@@ -48,4 +48,9 @@ public final class AuthDtos {
             @Size(max = 120) String nombreNegocio,
             @Pattern(regexp = "[a-z0-9-]{3,60}") String slug,
             String state) {}
+
+    public record OAuth2CompleteRequest(
+            @NotBlank String pendingToken,
+            @NotBlank @Size(max = 120) String nombreNegocio,
+            @NotBlank @Pattern(regexp = "[a-z0-9-]{3,60}", message = "slug: solo minúsculas, números y guiones") String slug) {}
 }

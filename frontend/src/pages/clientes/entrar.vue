@@ -25,9 +25,22 @@ const error = ref('')
 const cargando = ref(false)
 const resetEnviado = ref(false)
 const enviandoReset = ref(false)
+const verPass = ref(false)
+const cooldown = ref(false) // anti fuerza-bruta: bloquea reintentos por 2.5s tras error de login
 
 const withCreds = { withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } }
 const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
+
+const reaccion = ref('')
+const mirar = () => {
+  reaccion.value = 'mirar'
+}
+const taparse = () => {
+  reaccion.value = 'taparse'
+}
+const reposo = () => {
+  reaccion.value = ''
+}
 
 // Validación inline: solo se muestra una vez que el usuario escribió algo (no en vacío).
 const rutInvalido = computed(() => modo.value === 'registro' && !!rut.value && !esRutValido(rut.value))
@@ -40,9 +53,11 @@ const registroInvalido = computed(
 
 function formatearRutEnBlur() {
   if (rut.value && esRutValido(rut.value)) rut.value = formatearRut(rut.value)
+  reposo()
 }
 
 async function enviar() {
+  if (cooldown.value) return
   error.value = ''
   resetEnviado.value = false
   if (registroInvalido.value) {
@@ -67,6 +82,10 @@ async function enviar() {
     router.push('/clientes')
   } catch (e) {
     error.value = e.response?.data?.message || 'Error de conexión'
+    if (modo.value === 'login') {
+      cooldown.value = true
+      setTimeout(() => (cooldown.value = false), 2500)
+    }
   } finally {
     cargando.value = false
   }
@@ -76,12 +95,12 @@ async function recuperarContrasena() {
   enviandoReset.value = true
   try {
     await axios.post(`${baseURL}/cliente-auth/reset/solicitar`, { email: email.value }, withCreds)
-    resetEnviado.value = true
-    error.value = ''
   } catch {
-    resetEnviado.value = false
+    /* Anti-enumeración: mostramos éxito igual, sin revelar si el email existe. */
   } finally {
     enviandoReset.value = false
+    resetEnviado.value = true
+    error.value = ''
   }
 }
 </script>
@@ -91,22 +110,40 @@ async function recuperarContrasena() {
     class="min-h-screen bg-surface bg-cover bg-center flex flex-col justify-center items-center p-5 relative overflow-hidden"
     :style="{ backgroundImage: `url(${bgV2})` }"
   >
+    <div
+      class="absolute -top-10 -left-10 w-48 h-48 rounded-full bg-primary-container/30 blur-3xl pointer-events-none"
+    ></div>
+    <div
+      class="absolute bottom-10 -right-10 w-56 h-56 rounded-full bg-tertiary-container/30 blur-3xl pointer-events-none"
+    ></div>
+
     <div class="w-full max-w-md relative z-10">
       <div class="text-center mb-8">
         <div class="flex justify-center items-end mb-4 gap-3 h-28">
-          <img
-            :src="charBalloon"
-            alt=""
-            class="w-24 h-24 object-contain drop-shadow-xl character-img animate-floating"
-            aria-hidden="true"
-          />
-          <img
-            :src="charHat"
-            alt=""
-            class="w-24 h-24 object-contain drop-shadow-xl character-img animate-floating-delayed"
-            aria-hidden="true"
-          />
+          <div
+            class="character-wrapper animate-floating"
+            :class="{ 'character-look-down': reaccion === 'mirar', 'character-cover-eyes': reaccion === 'taparse' }"
+          >
+            <img
+              :src="charBalloon"
+              alt=""
+              class="w-24 h-24 object-contain drop-shadow-xl character-img"
+              aria-hidden="true"
+            />
+          </div>
+          <div
+            class="character-wrapper animate-floating-delayed"
+            :class="{ 'character-look-down': reaccion === 'mirar', 'character-cover-eyes': reaccion === 'taparse' }"
+          >
+            <img
+              :src="charHat"
+              alt=""
+              class="w-24 h-24 object-contain drop-shadow-xl character-img"
+              aria-hidden="true"
+            />
+          </div>
         </div>
+        <p class="font-display font-bold text-sm tracking-widest uppercase text-secondary mb-2">Acceso a clientes</p>
         <h1 class="font-display font-extrabold text-3xl md:text-4xl tracking-tight text-primary">Reserva tu hora</h1>
         <p class="text-on-surface-variant font-medium mt-1">
           {{ modo === 'login' ? 'Entra para agendar tus servicios' : 'Crea tu cuenta para agendar' }}
@@ -129,6 +166,8 @@ async function recuperarContrasena() {
                 maxlength="120"
                 placeholder="Cómo te llamas"
                 class="input-festivo input-festivo--con-icono !py-3"
+                @focus="mirar"
+                @blur="reposo"
               />
             </div>
           </div>
@@ -148,6 +187,7 @@ async function recuperarContrasena() {
                 placeholder="12.345.678-5"
                 :aria-invalid="rutInvalido"
                 class="input-festivo input-festivo--con-icono !py-3"
+                @focus="mirar"
                 @blur="formatearRutEnBlur"
               />
             </div>
@@ -173,6 +213,8 @@ async function recuperarContrasena() {
                 required
                 placeholder="tu@correo.com"
                 class="input-festivo input-festivo--con-icono !py-3"
+                @focus="mirar"
+                @blur="reposo"
               />
             </div>
           </div>
@@ -193,6 +235,8 @@ async function recuperarContrasena() {
                 placeholder="+56 9 1234 5678"
                 :aria-invalid="telInvalido"
                 class="input-festivo input-festivo--con-icono !py-3"
+                @focus="mirar"
+                @blur="reposo"
               />
             </div>
             <p v-if="telInvalido" class="text-xs font-semibold text-error mt-1">
@@ -211,12 +255,22 @@ async function recuperarContrasena() {
               <input
                 id="password"
                 v-model="password"
-                type="password"
+                :type="verPass ? 'text' : 'password'"
                 required
                 minlength="8"
                 placeholder="••••••••"
-                class="input-festivo input-festivo--con-icono !py-3"
+                class="input-festivo input-festivo--con-icono !py-3 !pr-11"
+                @focus="taparse"
+                @blur="reposo"
               />
+              <button
+                type="button"
+                class="absolute inset-y-0 right-3 flex items-center text-on-surface-variant hover:text-on-surface"
+                :aria-label="verPass ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                @click="verPass = !verPass"
+              >
+                <span class="material-symbols-outlined">{{ verPass ? 'visibility_off' : 'visibility' }}</span>
+              </button>
             </div>
           </div>
 
@@ -246,7 +300,7 @@ async function recuperarContrasena() {
             variante="primario"
             type="submit"
             :cargando="cargando"
-            :deshabilitado="cargando || registroInvalido"
+            :deshabilitado="cargando || registroInvalido || cooldown"
             class="w-full py-3"
           >
             {{ cargando ? 'Enviando…' : modo === 'login' ? 'Iniciar Sesión' : 'Crear cuenta' }}
@@ -267,7 +321,7 @@ async function recuperarContrasena() {
             </button>
           </p>
           <NuxtLink
-            to="/login"
+            to="/negocios_duenos"
             class="text-sm font-medium text-on-surface-variant hover:text-primary transition-colors"
           >
             ¿Tienes un negocio? Entra como dueño

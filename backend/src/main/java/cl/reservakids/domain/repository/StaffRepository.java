@@ -21,7 +21,4 @@ public interface StaffRepository extends JpaRepository<Staff, Long> {
     long countByRolPersonalId(Long rolPersonalId);
 
     List<Staff> findByTenantIdAndRolPersonalId(Long tenantId, Long rolPersonalId);
-
-    /** Staff activos con WhatsApp habilitado, para recordatorios automáticos. */
-    List<Staff> findByTenantIdAndActivoTrueAndWhatsappRecordatorioTrue(Long tenantId);
 }

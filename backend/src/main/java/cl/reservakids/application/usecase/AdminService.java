@@ -18,6 +18,7 @@ import cl.reservakids.domain.repository.PagoRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.TenantRepository;
+import cl.reservakids.infrastructure.security.LikeEscaper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -58,7 +59,7 @@ public class AdminService {
     @Transactional(readOnly = true)
     public List<NegocioAdminResumen> listarNegocios(String estado, String q) {
         String estadoFiltro = (estado == null || estado.isBlank()) ? null : estado.trim().toUpperCase();
-        String patron = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
+        String patron = (q == null || q.isBlank()) ? null : LikeEscaper.escaparYEnvolver(q);
         return tenantRepository.listarParaAdmin(estadoFiltro, patron).stream()
                 .map(AdminService::aResumen)
                 .toList();

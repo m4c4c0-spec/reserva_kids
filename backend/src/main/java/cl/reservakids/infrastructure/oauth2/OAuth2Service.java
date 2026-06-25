@@ -1,5 +1,6 @@
 package cl.reservakids.infrastructure.oauth2;
 
+import cl.reservakids.application.usecase.OAuth2Port;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
@@ -10,7 +11,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 @Service
-public class OAuth2Service {
+public class OAuth2Service implements OAuth2Port {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -45,7 +46,7 @@ public class OAuth2Service {
         String nonce = generarNonce();
         String state = URLEncoder.encode(type + "|" + provider + "|" + nonce, StandardCharsets.UTF_8);
         return switch (provider) {
-            case "google" -> googleAuthorizeUrl(redirectUri, state);
+            case "google" -> googleAuthorizeUrl(redirectUri, state, type);
             case "microsoft" -> microsoftAuthorizeUrl(redirectUri, state);
             case "apple" -> appleAuthorizeUrl(redirectUri, state);
             default -> throw new IllegalArgumentException("Proveedor OAuth2 no soportado: " + provider);
@@ -88,15 +89,23 @@ public class OAuth2Service {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private String googleAuthorizeUrl(String redirectUri, String state) {
+    private String googleAuthorizeUrl(String redirectUri, String state, String type) {
         if (googleClientId == null || googleClientId.isBlank()) return null;
+        
+        String scopes = "openid%20email%20profile";
+        String extraParams = "";
+        
+        if ("dueno".equals(type)) {
+            scopes += "%20https://www.googleapis.com/auth/calendar.events";
+            extraParams = "&access_type=offline&prompt=consent";
+        }
+        
         return "https://accounts.google.com/o/oauth2/v2/auth"
                 + "?response_type=code"
                 + "&client_id=" + googleClientId
                 + "&redirect_uri=" + redirectUri
-                + "&scope=openid%20email%20profile%20https://www.googleapis.com/auth/calendar.events"
-                + "&access_type=offline"
-                + "&prompt=consent"
+                + "&scope=" + scopes
+                + extraParams
                 + "&state=" + state;
     }
 

@@ -134,8 +134,8 @@ async function guardarMarca() {
 
       <form class="space-y-4" @submit.prevent="guardarToken">
         <div>
-          <label class="block text-sm font-bold text-on-surface mb-1">Pasarela</label>
-          <select v-model="pasarela" class="input-festivo">
+          <label for="cfg-pasarela" class="block text-sm font-bold text-on-surface mb-1">Pasarela</label>
+          <select id="cfg-pasarela" v-model="pasarela" class="input-festivo">
             <option value="MERCADOPAGO">Mercado Pago (tarjetas)</option>
             <option value="KHIPU">Khipu (transferencias)</option>
           </select>
@@ -143,11 +143,17 @@ async function guardarMarca() {
 
         <div v-if="pasarela === 'MERCADOPAGO'" class="space-y-4">
           <div>
-            <label class="block text-sm font-bold text-on-surface mb-1">Access Token (Producción)</label>
-            <BaseInput v-model="token" tipo="password" requerido placeholder="APP_USR-..." icono="key" />
+            <BaseInput
+              v-model="token"
+              label="Access Token (Producción)"
+              tipo="password"
+              requerido
+              placeholder="APP_USR-..."
+              icono="key"
+            />
           </div>
           <div>
-            <label class="block text-sm font-bold text-on-surface mb-1">
+            <label for="cfg-webhook-secret" class="block text-sm font-bold text-on-surface mb-1">
               Secreto de firma del webhook <span class="font-medium text-on-surface-variant">(opcional)</span>
             </label>
             <p class="text-xs font-medium text-on-surface-variant mb-1">
@@ -155,6 +161,7 @@ async function guardarMarca() {
               validamos que las notificaciones de pago vengan realmente de MP.
             </p>
             <BaseInput
+              id="cfg-webhook-secret"
               v-model="webhookSecret"
               tipo="password"
               placeholder="Déjalo vacío para no cambiarlo"
@@ -165,13 +172,14 @@ async function guardarMarca() {
 
         <div v-else class="space-y-4">
           <div>
-            <label class="block text-sm font-bold text-on-surface mb-1">API key de Khipu</label>
+            <label for="cfg-khipu-key" class="block text-sm font-bold text-on-surface mb-1">API key de Khipu</label>
             <p class="text-xs font-medium text-on-surface-variant mb-1">
               En tu cuenta de cobro de Khipu:
               <strong>Opciones de la cuenta > Para integrar Khipu a tu sitio web</strong>. La misma clave se usa para
               crear el cobro y para validar la notificación de pago.
             </p>
             <BaseInput
+              id="cfg-khipu-key"
               v-model="khipuApiKey"
               tipo="password"
               requerido
@@ -180,10 +188,11 @@ async function guardarMarca() {
             />
           </div>
           <div>
-            <label class="block text-sm font-bold text-on-surface mb-1">
+            <label for="cfg-khipu-receiver" class="block text-sm font-bold text-on-surface mb-1">
               Id de cobrador <span class="font-medium text-on-surface-variant">(opcional)</span>
             </label>
             <BaseInput
+              id="cfg-khipu-receiver"
               v-model.number="khipuReceiverId"
               tipo="number"
               placeholder="Aparece en tu cuenta de cobro de Khipu"
@@ -212,8 +221,13 @@ async function guardarMarca() {
 
       <form class="space-y-4" @submit.prevent="guardarContactoBtn">
         <div>
-          <label class="block text-sm font-bold text-on-surface mb-1">Teléfono de WhatsApp del salón</label>
-          <BaseInput v-model="telefonoContacto" tipo="tel" placeholder="+56 9 1234 5678" icono="support_agent" />
+          <BaseInput
+            v-model="telefonoContacto"
+            label="Teléfono de WhatsApp del salón"
+            tipo="tel"
+            placeholder="+56 9 1234 5678"
+            icono="support_agent"
+          />
           <p class="text-xs font-medium text-on-surface-variant mt-1">
             Déjalo vacío para ocultar el botón. Lo guardamos normalizado (569…).
           </p>
@@ -230,7 +244,7 @@ async function guardarMarca() {
       <h3 class="font-display font-bold text-on-surface mb-2">Marca blanca de tu salón</h3>
       <p class="font-medium text-on-surface-variant text-sm mb-4">
         Personaliza los colores, el título de la pestaña del navegador y el píxel de Meta para tus anuncios. Tus
-        clientes verán el nombre de tu salón en lugar de "ReservaKids".
+        clientes verán el nombre de tu salón en lugar de "DulceVida".
       </p>
 
       <form class="space-y-4" @submit.prevent="guardarMarca">
@@ -240,12 +254,14 @@ async function guardarMarca() {
             <input
               v-model="colorPrimario"
               type="color"
+              aria-label="Color principal (selector visual)"
               class="w-12 h-10 rounded-lg border-2 border-outline-variant/30 cursor-pointer"
             />
             <input
               v-model="colorPrimario"
               maxlength="7"
               placeholder="#b5007d"
+              aria-label="Color principal (código hexadecimal)"
               class="input-festivo !w-28 font-mono"
               pattern="#[0-9a-fA-F]{6}"
             />
@@ -260,16 +276,26 @@ async function guardarMarca() {
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-on-surface mb-1">Título de la pestaña</label>
-          <BaseInput v-model="tituloPagina" placeholder="Salón Fantasía - Reservas" maxlength="120" icono="tab" />
+          <BaseInput
+            v-model="tituloPagina"
+            label="Título de la pestaña"
+            placeholder="Salón Fantasía - Reservas"
+            maxlength="120"
+            icono="tab"
+          />
           <p class="text-xs font-medium text-on-surface-variant mt-1">
-            Déjalo vacío para mostrar "ReservaKids". Aparece en la pestaña del navegador y en los resultados de Google.
+            Déjalo vacío para mostrar "DulceVida". Aparece en la pestaña del navegador y en los resultados de Google.
           </p>
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-on-surface mb-1">Meta Pixel ID (Facebook/Instagram)</label>
-          <BaseInput v-model="metaPixelId" placeholder="1234567890123456" maxlength="50" icono="ads_click" />
+          <BaseInput
+            v-model="metaPixelId"
+            label="Meta Pixel ID (Facebook/Instagram)"
+            placeholder="1234567890123456"
+            maxlength="50"
+            icono="ads_click"
+          />
           <p class="text-xs font-medium text-on-surface-variant mt-1">
             Solo números. Lo encuentras en Meta Business Suite &gt; Fuentes de datos &gt; Píxeles. Déjalo vacío para no
             instalar el píxel. Mide conversiones de tus anuncios.
@@ -277,8 +303,11 @@ async function guardarMarca() {
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-on-surface mb-1">Políticas de cancelación</label>
+          <label for="cfg-politicas" class="block text-sm font-bold text-on-surface mb-1"
+            >Políticas de cancelación</label
+          >
           <textarea
+            id="cfg-politicas"
             v-model="politicasCancelacion"
             maxlength="5000"
             rows="4"
@@ -307,8 +336,11 @@ async function guardarMarca() {
       <LoadingSpinner v-if="cargandoHorario" mensaje="Cargando horario…" />
       <form v-else class="space-y-4" @submit.prevent="guardarHorario">
         <div>
-          <label class="block text-sm font-bold text-on-surface mb-1">Intervalo entre horas (minutos)</label>
+          <label for="cfg-intervalo" class="block text-sm font-bold text-on-surface mb-1"
+            >Intervalo entre horas (minutos)</label
+          >
           <input
+            id="cfg-intervalo"
             v-model.number="horario.intervaloMin"
             type="number"
             min="5"
@@ -336,12 +368,12 @@ async function guardarMarca() {
             :key="i"
             class="flex flex-wrap items-end gap-2 bg-surface p-3 rounded-2xl border border-outline-variant/20"
           >
-            <select v-model.number="f.diaSemana" required class="input-festivo">
+            <select v-model.number="f.diaSemana" required aria-label="Día de la semana" class="input-festivo">
               <option v-for="d in diasSemana" :key="d.value" :value="d.value">{{ d.label }}</option>
             </select>
-            <input v-model="f.horaApertura" type="time" required class="input-festivo" />
+            <input v-model="f.horaApertura" type="time" required aria-label="Hora de apertura" class="input-festivo" />
             <span class="text-on-surface-variant font-bold">a</span>
-            <input v-model="f.horaCierre" type="time" required class="input-festivo" />
+            <input v-model="f.horaCierre" type="time" required aria-label="Hora de cierre" class="input-festivo" />
             <button
               type="button"
               class="text-error hover:bg-error-container rounded-full w-8 h-8 flex items-center justify-center transition-colors"

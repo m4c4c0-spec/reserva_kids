@@ -66,7 +66,8 @@ async function iniciar(provider) {
         <span
           :class="p.iconBg"
           class="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-xs font-bold leading-none"
-        >{{ p.iconLetter }}</span>
+          >{{ p.iconLetter }}</span
+        >
         <span class="text-sm font-medium text-on-surface">{{ p.label }}</span>
       </button>
     </div>

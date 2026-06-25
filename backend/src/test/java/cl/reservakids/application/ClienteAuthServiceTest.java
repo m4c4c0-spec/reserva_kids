@@ -1,6 +1,7 @@
 package cl.reservakids.application;
 
 import cl.reservakids.application.dto.ClienteDtos;
+import cl.reservakids.application.usecase.AuthCrypto;
 import cl.reservakids.application.usecase.AuthEventPort;
 import cl.reservakids.application.usecase.ClienteAuthService;
 import cl.reservakids.application.usecase.TokenPort;
@@ -33,6 +34,7 @@ class ClienteAuthServiceTest {
     @Mock PasswordEncoder passwordEncoder;
     @Mock TokenPort tokenPort;
     @Mock AuthEventPort authEvent;
+    @Mock AuthCrypto authCrypto;
 
     @InjectMocks ClienteAuthService service;
 

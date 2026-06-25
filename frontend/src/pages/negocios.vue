@@ -11,7 +11,7 @@ definePageMeta({ layout: 'default' })
 const router = useRouter()
 
 useHead({
-  title: 'Negocios de cumpleaños — ReservaKids',
+  title: 'Negocios de cumpleaños — DulceVida',
   meta: [
     {
       name: 'description',
@@ -54,9 +54,7 @@ onMounted(async () => {
             aria-hidden="true"
           />
         </div>
-        <h1 class="font-display font-extrabold text-3xl md:text-4xl tracking-tight text-primary">
-          Elige un negocio
-        </h1>
+        <h1 class="font-display font-extrabold text-3xl md:text-4xl tracking-tight text-primary">Elige un negocio</h1>
         <p class="font-medium text-on-surface-variant mt-1">
           Mira los precios y horarios y reserva la fiesta — sin crear cuenta.
         </p>
@@ -98,10 +96,7 @@ onMounted(async () => {
         </li>
       </ul>
 
-      <div
-        v-else-if="!cargando && !error"
-        class="text-center bg-surface-container rounded-3xl px-5 py-10"
-      >
+      <div v-else-if="!cargando && !error" class="text-center bg-surface-container rounded-3xl px-5 py-10">
         <span class="material-symbols-outlined text-4xl text-on-surface-variant">storefront</span>
         <p class="font-display font-bold text-on-surface mt-2">
           {{ busqueda ? 'Ningún negocio coincide con tu búsqueda' : 'Aún no hay negocios disponibles' }}

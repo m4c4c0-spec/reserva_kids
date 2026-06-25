@@ -13,7 +13,7 @@ let requestIdActual = null
 function hexAleatorio(bytes) {
   if (typeof crypto === 'undefined' || !crypto.getRandomValues) return null
   return Array.from(crypto.getRandomValues(new Uint8Array(bytes)))
-    .map(b => b.toString(16).padStart(2, '0'))
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
 }
 

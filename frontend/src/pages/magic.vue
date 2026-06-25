@@ -43,7 +43,7 @@ onMounted(() => {
 })
 
 function pedirOtro() {
-  router.push('/login')
+  router.push('/negocios_duenos')
 }
 </script>
 

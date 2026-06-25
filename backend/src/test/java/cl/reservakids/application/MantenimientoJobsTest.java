@@ -2,6 +2,7 @@ package cl.reservakids.application;
 
 import cl.reservakids.application.usecase.BloqueMantenimientoJobs;
 import cl.reservakids.application.usecase.ClienteRetencionJobs;
+import cl.reservakids.application.usecase.DistributedLockPort;
 import cl.reservakids.application.usecase.TenantPurgaJobs;
 import cl.reservakids.application.usecase.TokenMantenimientoJobs;
 import cl.reservakids.domain.model.Cliente;
@@ -20,6 +21,7 @@ import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.ServicioRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.domain.repository.UsuarioRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -58,12 +60,20 @@ class MantenimientoJobsTest {
     @Mock ServicioRepository servicioRepository;
     @Mock UsuarioRepository usuarioRepository;
     @Mock PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock DistributedLockPort distributedLock;
     @Spy Clock clock = Clock.fixed(Instant.parse("2026-06-10T12:00:00Z"), ZoneOffset.UTC);
 
     @InjectMocks TokenMantenimientoJobs tokenJobs;
     @InjectMocks ClienteRetencionJobs clienteJobs;
     @InjectMocks BloqueMantenimientoJobs bloqueJobs;
     @InjectMocks TenantPurgaJobs tenantPurgaJobs;
+
+    @BeforeEach
+    void lockSiempreDisponible() {
+        // tokenJobs, clienteJobs y tenantPurgaJobs toman el lock distribuido antes de operar;
+        // bloqueJobs no lo usa, por eso el stub es lenient.
+        lenient().when(distributedLock.tryAcquire(any())).thenReturn(true);
+    }
 
     @Test
     void purgaRefreshTokensInvalidos() {

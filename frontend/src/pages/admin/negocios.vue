@@ -28,6 +28,32 @@ const toastTipo = ref('exito')
 const accionando = ref(null)
 
 const modalSuspender = ref(null)
+const modalCrear = ref(false)
+const creando = ref(false)
+
+const nuevoNegocio = ref({ nombreNegocio: '', slug: '', email: '', password: '' })
+
+async function crearNegocio() {
+  creando.value = true
+  try {
+    const creado = await adminService.crearNegocio({
+      nombreNegocio: nuevoNegocio.value.nombreNegocio.trim(),
+      slug: nuevoNegocio.value.slug.trim().toLowerCase(),
+      email: nuevoNegocio.value.email.trim(),
+      password: nuevoNegocio.value.password,
+    })
+    modalCrear.value = false
+    nuevoNegocio.value = { nombreNegocio: '', slug: '', email: '', password: '' }
+    toastMensaje.value = `Negocio "${creado.nombre}" creado. El dueño puede iniciar sesión en /negocios_duenos.`
+    toastTipo.value = 'exito'
+    await cargar()
+  } catch (e) {
+    toastMensaje.value = e.response?.data?.message || 'No se pudo crear el negocio'
+    toastTipo.value = 'error'
+  } finally {
+    creando.value = false
+  }
+}
 
 async function cargar() {
   cargando.value = true
@@ -95,11 +121,20 @@ onMounted(cargar)
 
 <template>
   <div>
-    <div class="mb-6">
-      <h2 class="font-display font-extrabold text-2xl text-on-surface">Negocios</h2>
-      <p class="text-sm font-medium text-on-surface-variant">
-        Gobierno de la plataforma: estado y acceso de cada negocio.
-      </p>
+    <div class="mb-6 flex items-center justify-between gap-4">
+      <div>
+        <h2 class="font-display font-extrabold text-2xl text-on-surface">Negocios</h2>
+        <p class="text-sm font-medium text-on-surface-variant">
+          Gobierno de la plataforma: estado y acceso de cada negocio.
+        </p>
+      </div>
+      <button
+        class="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary text-on-primary font-bold text-sm shadow-soft hover:shadow-lifted hover:-translate-y-0.5 transition-all"
+        @click="modalCrear = true"
+      >
+        <span class="material-symbols-outlined text-[20px]">add_circle</span>
+        Crear negocio
+      </button>
     </div>
 
     <!-- Filtros + búsqueda -->
@@ -128,6 +163,7 @@ onMounted(cargar)
           v-model="busqueda"
           type="search"
           placeholder="Buscar por nombre o slug"
+          aria-label="Buscar negocio por nombre o slug"
           class="input-festivo input-festivo--con-icono !py-2.5 w-full"
           @input="buscarDebounced"
         />
@@ -232,6 +268,86 @@ onMounted(cargar)
         >. Su página pública dejará de verse, no podrá iniciar sesión y se cerrarán sus sesiones activas. Es reversible
         (reactivar).
       </p>
+    </BaseModal>
+
+    <!-- Crear negocio -->
+    <BaseModal
+      :visible="modalCrear"
+      titulo="Crear nuevo negocio"
+      @cerrar="modalCrear = false"
+      @cancelar="modalCrear = false"
+    >
+      <form class="space-y-3" @submit.prevent="crearNegocio">
+        <div>
+          <label class="block text-xs font-bold text-on-surface-variant mb-1">Nombre del negocio</label>
+          <input
+            v-model="nuevoNegocio.nombreNegocio"
+            required
+            maxlength="120"
+            placeholder="Fiestas Pepito"
+            class="input-festivo w-full"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-on-surface-variant mb-1">Identificador (slug)</label>
+          <input
+            v-model="nuevoNegocio.slug"
+            required
+            pattern="[a-z0-9-]{3,60}"
+            placeholder="fiestas-pepito"
+            class="input-festivo w-full"
+            @input="nuevoNegocio.slug = nuevoNegocio.slug.replace(/[^a-z0-9-]/g, '')"
+          />
+          <p class="text-xs text-on-surface-variant mt-0.5">
+            Solo minúsculas, números y guiones. URL: dulcevida.cl/<strong>{{
+              nuevoNegocio.slug || 'tunegocio'
+            }}</strong>
+          </p>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-on-surface-variant mb-1">Email del dueño</label>
+          <input
+            v-model="nuevoNegocio.email"
+            type="email"
+            required
+            maxlength="160"
+            placeholder="dueno@correo.com"
+            class="input-festivo w-full"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-on-surface-variant mb-1">Contraseña inicial</label>
+          <input
+            v-model="nuevoNegocio.password"
+            type="password"
+            required
+            minlength="8"
+            maxlength="72"
+            placeholder="Mínimo 8 caracteres"
+            class="input-festivo w-full"
+          />
+        </div>
+        <p class="text-xs text-on-surface-variant">
+          El dueño podrá iniciar sesión con este email y contraseña en <strong>/negocios_duenos</strong>. Puede
+          cambiarla después desde el panel.
+        </p>
+        <div class="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            class="px-4 py-2 rounded-full font-bold text-sm text-on-surface-variant hover:text-on-surface transition-colors"
+            @click="modalCrear = false"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            :disabled="creando"
+            class="px-5 py-2 rounded-full bg-primary text-on-primary font-bold text-sm shadow-soft disabled:opacity-50"
+          >
+            {{ creando ? 'Creando…' : 'Crear negocio' }}
+          </button>
+        </div>
+      </form>
     </BaseModal>
 
     <BaseToast :mensaje="toastMensaje" :tipo="toastTipo" @cerrar="toastMensaje = ''" />

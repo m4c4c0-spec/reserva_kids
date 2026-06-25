@@ -61,7 +61,10 @@ definePageMeta({ layout: 'default' })
       <BaseButton variante="primario" @click="navigateTo('/')">Ir al inicio</BaseButton>
     </div>
 
-    <div v-else-if="invitacion" class="max-w-md space-y-6 bg-surface-lowest rounded-3xl shadow-lifted p-8 border border-outline-variant/20">
+    <div
+      v-else-if="invitacion"
+      class="max-w-md space-y-6 bg-surface-lowest rounded-3xl shadow-lifted p-8 border border-outline-variant/20"
+    >
       <div>
         <h1 class="font-display font-extrabold text-2xl text-on-surface">{{ invitacion.nombreNegocio }}</h1>
         <p class="font-medium text-on-surface-variant mt-1">Te invita a su celebración</p>
@@ -70,19 +73,36 @@ definePageMeta({ layout: 'default' })
       <div class="bg-surface-container rounded-2xl p-4 text-left space-y-2 text-sm font-medium text-on-surface-variant">
         <p><strong class="text-on-surface">Fecha:</strong> {{ invitacion.fecha }}</p>
         <p v-if="invitacion.hora"><strong class="text-on-surface">Hora:</strong> {{ invitacion.hora }}</p>
-        <p v-if="invitacion.direccion"><strong class="text-on-surface">Dirección:</strong> {{ invitacion.direccion }}</p>
+        <p v-if="invitacion.direccion">
+          <strong class="text-on-surface">Dirección:</strong> {{ invitacion.direccion }}
+        </p>
       </div>
 
       <div>
-        <label for="comentarios" class="block text-xs font-bold text-on-surface-variant mb-1">Comentarios (opcional)</label>
-        <textarea id="comentarios" v-model="comentarios" rows="3" maxlength="500" placeholder="Alergias, transporte, etc." class="input-festivo" />
+        <label for="comentarios" class="block text-xs font-bold text-on-surface-variant mb-1"
+          >Comentarios (opcional)</label
+        >
+        <textarea
+          id="comentarios"
+          v-model="comentarios"
+          rows="3"
+          maxlength="500"
+          placeholder="Alergias, transporte, etc."
+          class="input-festivo"
+        />
       </div>
 
       <div class="flex gap-3">
         <BaseButton variante="secundario" class="flex-1" :deshabilitado="!!accion" @click="responder(false)">
           No puedo
         </BaseButton>
-        <BaseButton variante="primario" class="flex-1" :cargando="accion === 'confirmar'" :deshabilitado="!!accion" @click="responder(true)">
+        <BaseButton
+          variante="primario"
+          class="flex-1"
+          :cargando="accion === 'confirmar'"
+          :deshabilitado="!!accion"
+          @click="responder(true)"
+        >
           ¡Voy!
         </BaseButton>
       </div>

@@ -91,6 +91,13 @@ public class GlobalExceptionHandler {
         return body(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
     }
 
+    @ExceptionHandler(cl.reservakids.domain.exception.OAuth2PendingRegistrationException.class)
+    public ResponseEntity<?> pendingOAuth2Registration(cl.reservakids.domain.exception.OAuth2PendingRegistrationException e) {
+        return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).body(
+                java.util.Map.of("message", e.getMessage(), "pendingToken", e.getPendingToken())
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorBody> generico(Exception e) {
         log.error("Error no controlado", e);

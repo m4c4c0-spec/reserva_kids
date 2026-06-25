@@ -70,24 +70,6 @@ public class WhatsappStubAdapter implements NotificacionWhatsappPort {
     }
 
     @Override
-    public void recordatorio(Tenant tenant, Reserva reserva, Cliente cliente,
-                             List<ReservaServicio> servicios) {
-        if (cliente.isAnonimizado() || cliente.getTelefono() == null) return;
-        String hora = reserva.getInicio() != null
-                ? CitaTexto.fechaHora(reserva)
-                : "mañana";
-        String lista = servicios != null && !servicios.isEmpty()
-                ? CitaTexto.listaServicios(servicios)
-                : "Tu reserva de cumpleaños";
-        String mensaje = "\uD83D\uDD14 Recordatorio " + cliente.getNombre() + "!\n\n" +
-                "Mañana tienes tu reserva en " + tenant.getNombre() + ":\n\n" +
-                lista +
-                "\u23F0 " + hora + "\n\n" +
-                "Recuerda llegar puntual. ¡Te esperamos!";
-        enviar(cliente.getTelefono(), mensaje);
-    }
-
-    @Override
     public void solicitudRecibida(Tenant tenant, Reserva reserva, Cliente cliente) {
         if (cliente.isAnonimizado() || cliente.getTelefono() == null) return;
         String mensaje = "\uD83D\uDCE8 ¡Recibimos tu solicitud de reserva en " + tenant.getNombre() + "!\n\n"
@@ -111,12 +93,6 @@ public class WhatsappStubAdapter implements NotificacionWhatsappPort {
     }
 
     @Override
-    public void recordatorioStaff(String telefono, String nombre, String detalle) {
-        String mensaje = String.format("👋 ¡Hola %s!\n\n🗓 %s\n\nRevisa el calendario de ReservaKids para más detalles.", nombre, detalle);
-        enviar(telefono, mensaje);
-    }
-
-    @Override
     public String linkWhatsApp(Cliente cliente, Reserva reserva) {
         if (cliente.isAnonimizado()) return null;
         String telefono = cliente.getTelefono().replaceAll("[^0-9]", "");
@@ -136,7 +112,9 @@ public class WhatsappStubAdapter implements NotificacionWhatsappPort {
         ejecutarTrasCommit(() -> {
             try {
                 if (!enabled) {
-                    log.info("[WhatsApp STUB → +{}] {}\n{}", destino, destino, mensaje);
+                    // DEBUG (no INFO): en prod el modo stub queda activo y esto loguearía
+                    // el teléfono del cliente + el cuerpo del mensaje (PII) en cada notificación.
+                    log.debug("[WhatsApp STUB → +{}] {}", destino, mensaje);
                     return;
                 }
                 if (phoneId.isBlank() || token.isBlank()) {

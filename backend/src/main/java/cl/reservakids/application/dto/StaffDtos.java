@@ -39,8 +39,7 @@ public final class StaffDtos {
             String rol,
             Long rolPersonalId,
             String rolNombre,
-            boolean activo,
-            boolean whatsappRecordatorio) {}
+            boolean activo) {}
 
     /** Catálogo de permisos disponibles para armar roles. */
     public record PermisoResponse(Long id, String codigo, String nombre, String categoria) {}
@@ -65,4 +64,11 @@ public final class StaffDtos {
     public record StaffActualizarRequest(
             @Size(max = 120) String nombre,
             Long rolPersonalId) {}
+
+    /** Vista pública del staff: solo nombre y rol, sin datos de contacto ni internos. */
+    public record StaffPublicResponse(String nombre, String rol) {
+        public StaffPublicResponse {
+            if (rol == null || rol.isBlank()) rol = "Staff";
+        }
+    }
 }

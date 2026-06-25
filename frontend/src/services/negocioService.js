@@ -20,11 +20,9 @@ export async function horas(slug, fecha, duracion) {
 
 export async function crearSolicitud(slug, datos) {
   try {
-    const { data } = await axios.post(
-      `${BASE_URL}/public/${slug}/reservas`,
-      datos,
-      { headers: headersConIdempotencia() },
-    )
+    const { data } = await axios.post(`${BASE_URL}/public/${slug}/reservas`, datos, {
+      headers: headersConIdempotencia(),
+    })
     return data
   } finally {
     resetIdempotencyKey()

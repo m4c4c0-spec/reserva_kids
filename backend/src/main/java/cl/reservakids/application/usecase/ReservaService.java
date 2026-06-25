@@ -4,6 +4,7 @@ import cl.reservakids.application.dto.ReservaDtos.*;
 import cl.reservakids.domain.exception.ConflictoBloqueException;
 import cl.reservakids.domain.exception.RecursoNoEncontradoException;
 import cl.reservakids.domain.model.*;
+import cl.reservakids.infrastructure.security.LikeEscaper;
 import cl.reservakids.domain.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +39,7 @@ public class ReservaService {
     private final NotificacionWhatsappPort whatsapp;
     private final PasarelaPagoPort pasarelaPagoPort;
     private final AuditPort audit;
-    private final cl.reservakids.infrastructure.security.HtmlSanitizer sanitizer;
+    private final HtmlSanitizerPort sanitizer;
 
     /**
      * RF-05 + RNF-05: solicitud pública. La toma del bloque es un UPDATE atómico
@@ -160,7 +161,7 @@ public class ReservaService {
                     : reservaRepository.findByTenantIdAndEstadoOrderByCreadaEnDesc(tenantId, estado, pageable);
         } else {
             // Patrón LIKE armado en Java (no CONCAT) para que el bind se tipe como texto.
-            String patron = "%" + termino.toLowerCase() + "%";
+            String patron = LikeEscaper.escaparYEnvolver(termino);
             // Si el término es numérico, también busca por #reserva exacto; si no, -1 nunca matchea.
             Long reservaId = parsearIdOrNull(termino);
             pagina = estado == null

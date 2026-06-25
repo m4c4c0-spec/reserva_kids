@@ -11,4 +11,10 @@ public interface TokenPort {
 
     /** Token para un administrador de plataforma (rol ADMIN, sin tenant). */
     String emitirAccessTokenAdmin(Long adminId, String email);
+
+    /** Token temporal (15 min) para registro OAuth2 pendiente de datos del negocio. */
+    String emitirPendingRegistrationToken(String email, String provider, String providerId);
+    
+    /** Valida el token temporal y devuelve las claims. */
+    io.jsonwebtoken.Claims validarPendingRegistrationToken(String token);
 }

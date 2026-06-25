@@ -20,6 +20,7 @@ public class AdminAuditLog {
 
     public static final String SUSPENDER_NEGOCIO = "SUSPENDER_NEGOCIO";
     public static final String REACTIVAR_NEGOCIO = "REACTIVAR_NEGOCIO";
+    public static final String CREAR_NEGOCIO = "CREAR_NEGOCIO";
     public static final String CREAR_ADMIN = "CREAR_ADMIN";
 
     @Id

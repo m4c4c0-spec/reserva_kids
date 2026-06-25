@@ -27,11 +27,13 @@ public class TokenMantenimientoJobs {
     private final RefreshTokenClienteRepository refreshTokenClienteRepository;
     private final RefreshTokenAdminRepository refreshTokenAdminRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final DistributedLockPort distributedLock;
     private final Clock clock;
 
     @Scheduled(cron = "0 30 4 * * *")
     @Transactional
     public void purgarRefreshTokens() {
+        if (!distributedLock.tryAcquire("purgarRefreshTokens")) return;
         OffsetDateTime ahora = OffsetDateTime.now(clock);
         int eliminados = refreshTokenRepository.purgarInvalidos(ahora);
         int clientes = refreshTokenClienteRepository.purgarInvalidos(ahora);

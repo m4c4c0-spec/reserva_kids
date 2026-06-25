@@ -6,12 +6,13 @@ import cl.reservakids.domain.model.PasswordResetToken;
 import cl.reservakids.domain.model.RefreshToken;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.model.Usuario;
-import cl.reservakids.infrastructure.oauth2.OAuth2Service;
 import cl.reservakids.infrastructure.oauth2.OAuth2UserInfo;
 import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.domain.repository.UsuarioRepository;
+import cl.reservakids.domain.exception.OAuth2PendingRegistrationException;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -43,7 +44,8 @@ public class AuthService {
     private final TokenPort tokenPort;
     private final AuthEventPort authEvent;
     private final NotificacionPort notificacion;
-    private final OAuth2Service oauth2Service;
+    private final OAuth2Port oauth2Port;
+    private final AuthCrypto authCrypto;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.magic-link.minutos:10}")
@@ -150,7 +152,7 @@ public class AuthService {
             PasswordResetToken token = new PasswordResetToken();
             token.setId(UUID.randomUUID());
             token.setUsuarioId(usuario.getId());
-            token.setTokenHash(AuthCrypto.sha256(tokenPlano));
+            token.setTokenHash(authCrypto.hashToken(tokenPlano));
             token.setExpiraEn(OffsetDateTime.now().plusMinutes(magicLinkMinutos));
             token.setTipo(PasswordResetToken.TIPO_MAGIC);
             passwordResetTokenRepository.save(token);
@@ -170,7 +172,7 @@ public class AuthService {
     @Transactional
     public TokenResponse entrarConMagicLink(String tokenPlano) {
         PasswordResetToken token = passwordResetTokenRepository
-                .findByTokenHashAndTipo(AuthCrypto.sha256(tokenPlano), PasswordResetToken.TIPO_MAGIC)
+                .findByTokenHashAndTipo(authCrypto.hashToken(tokenPlano), PasswordResetToken.TIPO_MAGIC)
                 .filter(t -> t.vigente(OffsetDateTime.now()))
                 .orElseThrow(() -> {
                     authEvent.registrar(AuthEvent.ACTOR_DUENO, null, "id:?",
@@ -195,7 +197,7 @@ public class AuthService {
      */
     @Transactional(noRollbackFor = BadCredentialsException.class)
     public TokenResponse refresh(RefreshRequest req) {
-        RefreshToken actual = refreshTokenRepository.findByTokenHash(AuthCrypto.sha256(req.refreshToken()))
+        RefreshToken actual = refreshTokenRepository.findByTokenHash(authCrypto.hashToken(req.refreshToken()))
                 .orElseThrow(() -> new BadCredentialsException("Refresh token inválido o expirado"));
         if (actual.isRevocado()) {
             refreshTokenRepository.revocarTodosDeUsuario(actual.getUsuarioId());
@@ -246,7 +248,7 @@ public class AuthService {
                     AuthEvent.LOGOUT, AuthEvent.SUCCESS, null);
         }
         if (refreshToken != null && !refreshToken.isBlank()) {
-            refreshTokenRepository.findByTokenHash(AuthCrypto.sha256(refreshToken))
+            refreshTokenRepository.findByTokenHash(authCrypto.hashToken(refreshToken))
                     .ifPresent(t -> refreshTokenRepository.revocarTodosDeUsuario(t.getUsuarioId()));
         }
     }
@@ -254,7 +256,7 @@ public class AuthService {
     @Transactional
     public TokenResponse oauth2Login(String provider, String code, String redirectUri,
                                      String nombreNegocio, String slug) {
-        OAuth2UserInfo info = oauth2Service.verify(provider, code, redirectUri);
+        OAuth2UserInfo info = oauth2Port.verify(provider, code, redirectUri);
         String email = AuthCrypto.normalizarEmail(info.email());
 
         var existingByProvider = usuarioRepository.findByOauthProviderAndOauthProviderId(
@@ -286,8 +288,8 @@ public class AuthService {
         // Nuevo registro por OAuth2: requiere nombreNegocio y slug
         if (nombreNegocio == null || nombreNegocio.isBlank()
                 || slug == null || slug.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Para registrarte con " + provider + " necesitas indicar el nombre y slug del negocio");
+            String pendingToken = tokenPort.emitirPendingRegistrationToken(email, provider, info.providerId());
+            throw new OAuth2PendingRegistrationException(pendingToken);
         }
         if (SLUGS_RESERVADOS.contains(slug)) {
             throw new IllegalArgumentException("Ese slug está reservado, elige otro");
@@ -319,6 +321,44 @@ public class AuthService {
         return emitirTokens(usuario, tenant);
     }
 
+    @Transactional
+    public TokenResponse completarRegistroOAuth2(String pendingToken, String nombreNegocio, String slug) {
+        Claims claims = tokenPort.validarPendingRegistrationToken(pendingToken);
+        String email = claims.get("email", String.class);
+        String provider = claims.get("provider", String.class);
+        String providerId = claims.get("providerId", String.class);
+
+        if (SLUGS_RESERVADOS.contains(slug)) {
+            throw new IllegalArgumentException("Ese slug está reservado, elige otro");
+        }
+        if (tenantRepository.existsBySlug(slug)) {
+            throw new IllegalArgumentException("El slug ya está en uso");
+        }
+        if (usuarioRepository.existsByEmail(email)) {
+            throw new IllegalArgumentException("El email ya está registrado");
+        }
+
+        Tenant tenant = new Tenant();
+        tenant.setNombre(nombreNegocio);
+        tenant.setSlug(slug);
+        tenant = tenantRepository.save(tenant);
+
+        horarioAtencionService.crearHorarioPorDefecto(tenant.getId());
+        rbacService.crearRolesPorDefecto(tenant.getId());
+
+        Usuario usuario = new Usuario();
+        usuario.setTenantId(tenant.getId());
+        usuario.setEmail(email);
+        usuario.setOauthProvider(provider);
+        usuario.setOauthProviderId(providerId);
+        usuarioRepository.save(usuario);
+
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS,
+                "Registro OAuth2 Completado " + provider + ": " + slug);
+        return emitirTokens(usuario, tenant);
+    }
+
     private TokenResponse emitirTokens(Usuario usuario, Tenant tenant) {
         byte[] bytes = new byte[48];
         secureRandom.nextBytes(bytes);
@@ -327,7 +367,7 @@ public class AuthService {
         RefreshToken refresh = new RefreshToken();
         refresh.setId(UUID.randomUUID());
         refresh.setUsuarioId(usuario.getId());
-        refresh.setTokenHash(AuthCrypto.sha256(refreshPlano));
+        refresh.setTokenHash(authCrypto.hashToken(refreshPlano));
         refresh.setExpiraEn(OffsetDateTime.now().plusDays(refreshDays));
         refreshTokenRepository.save(refresh);
 

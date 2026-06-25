@@ -28,6 +28,10 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
         response.setHeader("X-Permitted-Cross-Domain-Policies", "none");
         response.setHeader("Cross-Origin-Resource-Policy", "same-origin");
         response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+        // Este filtro solo corre para /api/* (ver shouldNotFilter): son respuestas JSON,
+        // nunca HTML ni scripts. Por eso un CSP estricto 'none' es lo correcto (y coincide
+        // con el bloque @api del Caddyfile). El CSP de las rutas SSR lo gestiona nuxt-security.
+        response.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
         chain.doFilter(request, response);
     }
 

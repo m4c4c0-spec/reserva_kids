@@ -106,6 +106,7 @@ const confirmTexto = computed(() => {
 
 function cambiarPagina(p) {
   paginaActual.value = p
+  if (process.client) window.scrollTo({ top: 0, behavior: 'smooth' })
   cargar()
 }
 
@@ -322,7 +323,13 @@ async function eliminarInvitado(r, invitadoId) {
           <span class="material-symbols-outlined text-[20px] text-amber-700">point_of_sale</span>
           <h3 class="font-bold text-sm text-amber-900">Caja diaria — {{ fechaCaja }}</h3>
         </div>
-        <input v-model="fechaCaja" type="date" class="input-festivo !w-40 text-sm" @change="cargarCaja" />
+        <input
+          v-model="fechaCaja"
+          type="date"
+          aria-label="Fecha de la caja diaria"
+          class="input-festivo !w-40 text-sm"
+          @change="cargarCaja"
+        />
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
         <div>
@@ -497,12 +504,14 @@ async function eliminarInvitado(r, invitadoId) {
               <input
                 v-model="nuevoInvitado.nombre"
                 placeholder="Nombre"
+                aria-label="Nombre del invitado"
                 class="input-festivo !flex-1 text-xs"
                 maxlength="120"
               />
               <input
                 v-model="nuevoInvitado.email"
                 placeholder="Email"
+                aria-label="Email del invitado"
                 type="email"
                 class="input-festivo !flex-1 text-xs"
                 maxlength="160"

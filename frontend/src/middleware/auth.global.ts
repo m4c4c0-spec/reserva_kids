@@ -1,11 +1,7 @@
 export default defineNuxtRouteMiddleware((to) => {
   if (import.meta.server) return
 
-  const config = useRuntimeConfig()
-  const isSingleTenant = !!(
-    (typeof window !== 'undefined' && window.__SINGLE_TENANT_SLUG__) ||
-    config.public.singleTenantSlug
-  )
+  const { isSingleTenant } = useSingleTenant()
 
   try {
     const auth = useAuthStore()
@@ -25,7 +21,7 @@ export default defineNuxtRouteMiddleware((to) => {
     if (staff.autenticado && (to.meta.requiereAuth || to.meta.requiereCliente || to.meta.requiereAdmin))
       return navigateTo('/staff/calendario')
 
-    if (to.meta.requiereAuth && !auth.autenticado) return navigateTo('/login')
+    if (to.meta.requiereAuth && !auth.autenticado) return navigateTo('/negocios_duenos')
     if (to.meta.requiereCliente && !clienteAuth.autenticado) return navigateTo('/clientes/entrar')
     if (to.meta.requiereAdmin && !adminAuth.autenticado) return navigateTo('/admin/login')
     if (to.meta.requiereStaff && !staff.autenticado) return navigateTo('/staff/entrar')

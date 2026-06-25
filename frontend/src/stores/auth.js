@@ -52,6 +52,14 @@ export const useAuthStore = defineStore('auth', {
       )
       this.guardar(data)
     },
+    async oauth2Complete(pendingToken, nombreNegocio, slug) {
+      const { data } = await axios.post(
+        `${this.baseURL}/auth/oauth2/complete`,
+        { pendingToken, nombreNegocio, slug },
+        withCreds,
+      )
+      this.guardar(data)
+    },
     async oauth2AuthorizeUrl(provider, type) {
       const { data } = await axios.get(`${this.baseURL}/auth/oauth2/${provider}/authorize?type=${type}`)
       return data.authorizeUrl

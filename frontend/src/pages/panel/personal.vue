@@ -14,6 +14,17 @@ const personal = ref([])
 const roles = ref([])
 const creando = ref(null)
 const eliminandoId = ref(null)
+const linkCopiado = ref(false)
+
+async function copiarLinkStaff() {
+  try {
+    await navigator.clipboard.writeText(`${window.location.origin}/staff/entrar`)
+    linkCopiado.value = true
+    setTimeout(() => (linkCopiado.value = false), 2000)
+  } catch {
+    linkCopiado.value = false
+  }
+}
 
 const vacio = () => ({ nombre: '', email: '', telefono: '', rolPersonalId: null, password: '' })
 
@@ -59,6 +70,25 @@ onMounted(async () => {
       <BaseButton variante="primario" @click="creando = vacio()">
         <span class="material-symbols-outlined text-[20px]">person_add</span> Nuevo
       </BaseButton>
+    </div>
+
+    <div class="card-festiva flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-secondary-fixed/40">
+      <div class="flex items-start gap-3">
+        <span class="material-symbols-outlined text-secondary mt-0.5">share</span>
+        <div>
+          <p class="font-display font-bold text-on-surface">Link de acceso para tu equipo</p>
+          <p class="text-sm font-medium text-on-surface-variant">
+            Pásales este link a tus animadores y recepción. Entren, inicien sesión y vean su calendario.
+          </p>
+        </div>
+      </div>
+      <button
+        class="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-secondary text-on-secondary font-bold text-sm hover:shadow-md transition-all"
+        @click="copiarLinkStaff"
+      >
+        <span class="material-symbols-outlined text-[18px]">{{ linkCopiado ? 'check' : 'content_copy' }}</span>
+        {{ linkCopiado ? '¡Copiado!' : 'Copiar link' }}
+      </button>
     </div>
 
     <form v-if="creando" class="card-festiva grid gap-3 sm:grid-cols-2" @submit.prevent="ejecutarGuardar">
@@ -124,7 +154,6 @@ onMounted(async () => {
         <p class="text-xs font-bold text-outline">
           <span v-if="p.telefono">{{ p.telefono }} · </span>
           {{ p.activo ? 'Activo' : 'Inactivo' }}
-          <span v-if="p.whatsappRecordatorio" class="text-primary font-bold">· Recordatorio WhatsApp</span>
         </p>
         <div class="flex gap-3 mt-2">
           <button v-if="p.activo" class="text-sm font-bold text-error hover:underline" @click="eliminandoId = p.id">

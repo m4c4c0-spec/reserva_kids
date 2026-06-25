@@ -1,6 +1,12 @@
 <script setup>
 definePageMeta({ layout: 'default', requiereCliente: true })
 
+useSeoMeta({
+  title: 'Elige un negocio',
+  description: 'Explora los negocios disponibles y agenda tu cita en pocos pasos.',
+  robots: 'noindex',
+})
+
 import { ref, onMounted } from 'vue'
 import * as negocioService from '../../services/negocioService'
 import { useClienteAuthStore } from '../../stores/clienteAuth'

@@ -134,6 +134,16 @@ public class AuthController {
         return sinRefresh(tokens);
     }
 
+    /** Completa el registro OAuth2 de un dueño luego de proveer nombre y slug. */
+    @PostMapping("/oauth2/complete")
+    public TokenResponse oauth2Complete(
+            @Valid @RequestBody OAuth2CompleteRequest req,
+            HttpServletResponse res) {
+        TokenResponse tokens = authService.completarRegistroOAuth2(req.pendingToken(), req.nombreNegocio(), req.slug());
+        refreshCookieService.setear(res, RefreshCookieService.COOKIE_DUENO, tokens.refreshToken());
+        return sinRefresh(tokens);
+    }
+
     /** Refresh token: prioriza la cookie HttpOnly; cae al body para clientes no-navegador. */
     private static String resolverRefresh(String cookieRefresh, RefreshRequest req) {
         if (cookieRefresh != null && !cookieRefresh.isBlank()) {

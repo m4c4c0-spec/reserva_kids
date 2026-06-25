@@ -37,6 +37,7 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final NotificacionPort notificacion;
     private final AuthEventPort authEvent;
+    private final AuthCrypto authCrypto;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.password-reset.minutos}")
@@ -66,7 +67,7 @@ public class PasswordResetService {
             PasswordResetToken token = new PasswordResetToken();
             token.setId(UUID.randomUUID());
             token.setUsuarioId(usuario.getId());
-            token.setTokenHash(AuthCrypto.sha256(tokenPlano));
+            token.setTokenHash(authCrypto.hashToken(tokenPlano));
             token.setExpiraEn(OffsetDateTime.now().plusMinutes(resetMinutos));
             passwordResetTokenRepository.save(token);
 
@@ -82,7 +83,7 @@ public class PasswordResetService {
      */
     @Transactional
     public void confirmarResetPassword(ResetConfirmacionRequest req) {
-        PasswordResetToken token = passwordResetTokenRepository.findByTokenHash(AuthCrypto.sha256(req.token()))
+        PasswordResetToken token = passwordResetTokenRepository.findByTokenHash(authCrypto.hashToken(req.token()))
                 .filter(t -> t.vigente(OffsetDateTime.now()))
                 .orElseThrow(() -> new BadCredentialsException(
                         "El enlace es inválido o ya venció; pide uno nuevo"));

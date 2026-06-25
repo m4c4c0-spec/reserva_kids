@@ -17,7 +17,9 @@ export function createAuthClient(useStore, loginRoute) {
     try {
       config.headers['traceparent'] = generarTraceParent()
       config.headers['X-Request-ID'] = generarRequestId()
-    } catch { /* SSR o crypto no disponible */ }
+    } catch {
+      /* SSR o crypto no disponible */
+    }
     return config
   })
 

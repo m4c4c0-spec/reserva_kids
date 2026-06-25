@@ -2,6 +2,8 @@ import tailwindcss from '@tailwindcss/vite'
 
 const API_TARGET = process.env.VITE_API_TARGET || 'http://localhost:8080'
 const SINGLE_TENANT_SLUG = process.env.VITE_SINGLE_TENANT_SLUG || ''
+const SINGLE_TENANT_NAME = process.env.VITE_SINGLE_TENANT_NAME || SINGLE_TENANT_SLUG
+const REGISTRATION_OPEN = process.env.VITE_REGISTRATION_OPEN !== 'false'
 const API_URL = process.env.VITE_API_URL || ''
 
 export default defineNuxtConfig({
@@ -33,12 +35,16 @@ export default defineNuxtConfig({
     },
   },
 
+  routeRules: {
+    '/api/**': { proxy: (process.env.VITE_API_TARGET || (process.env.NODE_ENV === 'production' ? 'http://backend:8080' : 'http://localhost:8080')) + '/api/**' },
+  },
+
   pwa: {
     registerType: 'autoUpdate',
     includeAssets: ['favicon-16.png', 'favicon-32.png', 'icon.svg', 'icons/apple-touch-icon.png'],
     manifest: {
-      name: 'ReservaKids — Panel del negocio',
-      short_name: 'ReservaKids',
+      name: 'DulceVida — Panel del negocio',
+      short_name: 'DulceVida',
       description: 'Gestión de reservas para cumpleaños infantiles',
       theme_color: '#b5007d',
       background_color: '#ffffff',
@@ -68,6 +74,8 @@ export default defineNuxtConfig({
     public: {
       apiUrl: API_URL,
       singleTenantSlug: SINGLE_TENANT_SLUG,
+      singleTenantName: SINGLE_TENANT_NAME,
+      registrationOpen: REGISTRATION_OPEN,
     },
   },
 
@@ -97,7 +105,7 @@ export default defineNuxtConfig({
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
-        { name: 'apple-mobile-web-app-title', content: 'ReservaKids' },
+        { name: 'apple-mobile-web-app-title', content: 'DulceVida' },
       ],
       script: [
         {

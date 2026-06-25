@@ -1,14 +1,9 @@
 export default defineNuxtRouteMiddleware((to) => {
-  const config = useRuntimeConfig()
-  const slug =
-    (typeof window !== 'undefined' && window.__SINGLE_TENANT_SLUG__) ||
-    config.public.singleTenantSlug
-
-  const isSingleTenant = !!(slug && slug.length > 0)
+  const { slug, isSingleTenant } = useSingleTenant()
 
   // En modo single-tenant el directorio público no tiene sentido (solo hay un negocio).
   if (isSingleTenant && to.path === '/negocios') {
-    return navigateTo('/404', { replace: true })
+    return navigateTo(`/clientes/agendar/${slug}`, { replace: true })
   }
 
   // El home del cliente va directo a sus reservas (no al directorio).

@@ -99,6 +99,31 @@ public class JwtService implements TokenPort {
                 .compact();
     }
 
+    @Override
+    public String emitirPendingRegistrationToken(String email, String provider, String providerId) {
+        Instant ahora = Instant.now();
+        return Jwts.builder()
+                .subject("pending_registration")
+                .issuer(issuer)
+                .audience().add(audience).and()
+                .issuedAt(Date.from(ahora))
+                .expiration(Date.from(ahora.plus(Duration.ofMinutes(15))))
+                .claim("email", email)
+                .claim("provider", provider)
+                .claim("providerId", providerId)
+                .signWith(key)
+                .compact();
+    }
+    
+    @Override
+    public Claims validarPendingRegistrationToken(String token) {
+        Claims claims = parsearClaims(token);
+        if (!"pending_registration".equals(claims.getSubject())) {
+            throw new org.springframework.security.authentication.BadCredentialsException("El token no es un token de registro pendiente válido");
+        }
+        return claims;
+    }
+
     /** Staff del negocio: rol STAFF y tenantId del negocio al que pertenecen. */
     public String emitirStaff(Staff staff) {
         Instant ahora = Instant.now();
