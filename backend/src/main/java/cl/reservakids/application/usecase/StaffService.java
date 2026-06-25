@@ -115,11 +115,6 @@ public class StaffService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
-    public List<Staff> staffConWhatsapp(Long tenantId) {
-        return staffRepository.findByTenantIdAndActivoTrueAndWhatsappRecordatorioTrue(tenantId);
-    }
-
     private StaffResponse aResponse(Staff s) {
         String rolNombre = s.getRol();
         if (s.getRolPersonalId() != null) {
@@ -129,6 +124,6 @@ public class StaffService {
         }
         return new StaffResponse(s.getId(), s.getNombre(), s.getEmail(),
                 s.getTelefono(), s.getRol(), s.getRolPersonalId(), rolNombre,
-                s.isActivo(), s.isWhatsappRecordatorio());
+                s.isActivo());
     }
 }

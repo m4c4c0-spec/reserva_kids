@@ -27,10 +27,7 @@ async function salir() {
           <p class="text-xs font-bold text-on-surface-variant truncate">{{ auth.email }}</p>
         </div>
       </div>
-      <button
-        class="font-bold text-sm text-on-surface-variant hover:text-primary transition-colors"
-        @click="salir"
-      >
+      <button class="font-bold text-sm text-on-surface-variant hover:text-primary transition-colors" @click="salir">
         Salir
       </button>
     </header>

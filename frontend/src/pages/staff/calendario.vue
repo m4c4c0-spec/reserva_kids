@@ -55,7 +55,13 @@ onMounted(() => {
         <p class="text-sm font-medium text-on-surface-variant">{{ store.nombre }} · {{ store.rol }}</p>
       </div>
       <div class="flex items-center gap-2">
-        <input v-model="fecha" type="date" class="input-festivo !w-40 text-sm" @change="cargar" />
+        <input
+          v-model="fecha"
+          type="date"
+          aria-label="Fecha del calendario"
+          class="input-festivo !w-40 text-sm"
+          @change="cargar"
+        />
         <BaseButton variante="secundario" @click="salir">Salir</BaseButton>
       </div>
     </header>
@@ -70,15 +76,25 @@ onMounted(() => {
     </div>
 
     <ul v-else class="max-w-2xl mx-auto space-y-3">
-      <li v-for="e in eventos" :key="e.id" class="bg-surface-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/10 flex items-center gap-4">
+      <li
+        v-for="e in eventos"
+        :key="e.id"
+        class="bg-surface-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/10 flex items-center gap-4"
+      >
         <div class="w-14 h-14 rounded-xl bg-primary-container flex items-center justify-center flex-shrink-0">
           <span class="font-display font-extrabold text-lg text-on-primary-container">{{ e.hora }}</span>
         </div>
         <div class="flex-1 min-w-0">
           <p class="font-bold text-on-surface">Fiesta infantil</p>
-          <p class="text-sm font-medium text-on-surface-variant">👶 {{ e.numNinos || '—' }} niños<span v-if="e.comuna"> · {{ e.comuna }}</span></p>
+          <p class="text-sm font-medium text-on-surface-variant">
+            👶 {{ e.numNinos || '—' }} niños<span v-if="e.comuna"> · {{ e.comuna }}</span>
+          </p>
         </div>
-        <span class="px-2 py-1 rounded-full text-[10px] font-extrabold" :class="e.estado === 'CONFIRMADA' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'">{{ e.estado }}</span>
+        <span
+          class="px-2 py-1 rounded-full text-[10px] font-extrabold"
+          :class="e.estado === 'CONFIRMADA' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'"
+          >{{ e.estado }}</span
+        >
       </li>
     </ul>
   </main>

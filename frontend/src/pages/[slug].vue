@@ -16,10 +16,12 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const runtimeConfig = useRuntimeConfig()
 
-const slug = computed(() => (process.client && window.__SINGLE_TENANT_SLUG__) || runtimeConfig.public.singleTenantSlug || route.params.slug)
+const slug = computed(
+  () => (process.client && window.__SINGLE_TENANT_SLUG__) || runtimeConfig.public.singleTenantSlug || route.params.slug,
+)
 const clienteAuth = useClienteAuthStore()
 
-const esSingleTenant = !!(process.client && window.__SINGLE_TENANT_SLUG__ || runtimeConfig.public.singleTenantSlug)
+const esSingleTenant = !!((process.client && window.__SINGLE_TENANT_SLUG__) || runtimeConfig.public.singleTenantSlug)
 const negocio = ref(null)
 const noExiste = ref(false)
 const bloques = ref([])
@@ -28,8 +30,8 @@ const mes = ref(`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '
 
 const seoTitle = computed(() =>
   negocio.value
-    ? (negocio.value.tituloPagina || `${negocio.value.nombre} \u2014 ReservaKids`)
-    : 'ReservaKids \u2014 Reserva de cumpleaños',
+    ? negocio.value.tituloPagina || `${negocio.value.nombre} \u2014 DulceVida`
+    : 'DulceVida \u2014 Reserva de cumpleaños',
 )
 const seoDescription = computed(() =>
   negocio.value
@@ -49,14 +51,24 @@ useHead({
 const seleccion = ref({ servicioId: null, bloqueId: null })
 const adicionalesSeleccionados = ref([])
 const servicioSeleccionado = computed(() => negocio.value?.servicios.find((s) => s.id === seleccion.value.servicioId))
-const serviciosPrincipales = computed(() => (negocio.value?.servicios || []).filter(s => !s.esAdicional))
-const serviciosAdicionales = computed(() => (negocio.value?.servicios || []).filter(s => s.esAdicional))
+const serviciosPrincipales = computed(() => (negocio.value?.servicios || []).filter((s) => !s.esAdicional))
+const serviciosAdicionales = computed(() => (negocio.value?.servicios || []).filter((s) => s.esAdicional))
 const diaSeleccionado = ref(null)
 const haptics = useHaptics()
 
-function elegirServicio(id) { seleccion.value.servicioId = id; haptics.tap() }
-function elegirDia(fecha, cupos, pasada) { if (pasada || cupos <= 0) return; diaSeleccionado.value = fecha; haptics.tap() }
-function elegirBloque(id) { seleccion.value.bloqueId = id; haptics.tap() }
+function elegirServicio(id) {
+  seleccion.value.servicioId = id
+  haptics.tap()
+}
+function elegirDia(fecha, cupos, pasada) {
+  if (pasada || cupos <= 0) return
+  diaSeleccionado.value = fecha
+  haptics.tap()
+}
+function elegirBloque(id) {
+  seleccion.value.bloqueId = id
+  haptics.tap()
+}
 
 const bloquesPorDia = computed(() => {
   const mapa = {}
@@ -104,7 +116,7 @@ function colorTermico(cupos, pasada) {
   if (cupos >= 4) return 'bg-[#bbf7d0] text-green-900 hover:bg-[#86efac]'
   if (cupos >= 2) return 'bg-[#fde68a] text-amber-900 hover:bg-[#fcd34d]'
   if (cupos >= 1) return 'bg-[#fed7aa] text-orange-900 hover:bg-[#fdba74]'
-    return 'bg-surface-highest text-on-surface-variant/30 cursor-default'
+  return 'bg-surface-highest text-on-surface-variant/30 cursor-default'
 }
 
 const bloquesDelDia = computed(() => {
@@ -278,6 +290,8 @@ const whatsappUrl = computed(() => {
   return `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
 })
 
+const staffLista = computed(() => negocio.value?.staff || [])
+
 watch(slug, async () => {
   if (slug.value) {
     paso.value = 1
@@ -318,10 +332,15 @@ watch(exito, (v) => {
   haptics.celebrate()
   holdExpira.value = Date.now() + HOLD_MS
   ahoraMs.value = Date.now()
-  if (!tickTimer) tickTimer = setInterval(() => { ahoraMs.value = Date.now() }, 30000)
+  if (!tickTimer)
+    tickTimer = setInterval(() => {
+      ahoraMs.value = Date.now()
+    }, 30000)
 })
 
-onUnmounted(() => { if (tickTimer) clearInterval(tickTimer) })
+onUnmounted(() => {
+  if (tickTimer) clearInterval(tickTimer)
+})
 
 const puedeAvanzar = computed(() => {
   if (paso.value === 1) return !!seleccion.value.servicioId
@@ -366,14 +385,8 @@ const barraDeshabilitada = computed(() => enviando.value || (paso.value < 3 && !
         Puede que el enlace esté mal escrito o que el negocio ya no esté disponible.
       </p>
       <div class="mt-6 flex flex-col sm:flex-row items-center gap-3">
-        <BaseButton variante="primario" class="!rounded-full px-6 py-3" @click="cargarNegocio">
-          Reintentar
-        </BaseButton>
-        <NuxtLink
-          v-if="!esSingleTenant"
-          to="/negocios"
-          class="font-bold text-secondary underline underline-offset-4"
-        >
+        <BaseButton variante="primario" class="!rounded-full px-6 py-3" @click="cargarNegocio"> Reintentar </BaseButton>
+        <NuxtLink v-if="!esSingleTenant" to="/negocios" class="font-bold text-secondary underline underline-offset-4">
           Ver todos los negocios
         </NuxtLink>
       </div>
@@ -397,6 +410,28 @@ const barraDeshabilitada = computed(() => enviando.value || (paso.value < 3 && !
         </h1>
         <p class="font-medium text-on-surface-variant mt-1">Cotiza y reserva tu cumpleaños en minutos</p>
       </header>
+
+      <div v-if="staffLista.length" class="bg-surface-lowest/80 rounded-2xl p-5 border border-outline-variant/10">
+        <h2 class="font-display font-bold text-sm text-on-surface mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary">groups</span>
+          Nuestro equipo
+        </h2>
+        <div class="flex flex-wrap gap-3">
+          <div
+            v-for="(persona, i) in staffLista"
+            :key="i"
+            class="flex items-center gap-3 bg-surface-container rounded-xl px-4 py-2.5 border border-outline-variant/10"
+          >
+            <div class="w-9 h-9 rounded-full bg-primary-container flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-on-primary-container text-base">person</span>
+            </div>
+            <div class="min-w-0">
+              <p class="font-bold text-sm text-on-surface truncate">{{ persona.nombre }}</p>
+              <p class="text-xs font-semibold text-primary">{{ persona.rol }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div
         v-if="route.query.pago === 'exito'"
@@ -514,8 +549,15 @@ const barraDeshabilitada = computed(() => enviando.value || (paso.value < 3 && !
             <h3 class="font-display font-bold text-on-surface mb-2 text-sm">Agregá extras</h3>
             <ul class="grid gap-2 sm:grid-cols-2">
               <li v-for="a in serviciosAdicionales" :key="a.id">
-                <label class="flex items-center gap-3 bg-surface-lowest rounded-2xl p-3 border-2 border-transparent hover:border-primary/30 transition-colors cursor-pointer">
-                  <input type="checkbox" v-model="adicionalesSeleccionados" :value="a.id" class="accent-primary w-4 h-4" />
+                <label
+                  class="flex items-center gap-3 bg-surface-lowest rounded-2xl p-3 border-2 border-transparent hover:border-primary/30 transition-colors cursor-pointer"
+                >
+                  <input
+                    v-model="adicionalesSeleccionados"
+                    type="checkbox"
+                    :value="a.id"
+                    class="accent-primary w-4 h-4"
+                  />
                   <div class="flex-1">
                     <span class="font-bold text-sm text-on-surface">{{ a.nombre }}</span>
                     <span class="text-primary font-extrabold text-sm ml-2">{{ clp(a.precioClp) }}</span>
@@ -546,8 +588,12 @@ const barraDeshabilitada = computed(() => enviando.value || (paso.value < 3 && !
 
           <div v-else class="space-y-2">
             <div class="grid grid-cols-7 gap-1">
-              <span v-for="d in diasSemana" :key="d"
-                class="text-center text-[11px] font-extrabold text-on-surface-variant py-1">{{ d }}</span>
+              <span
+                v-for="d in diasSemana"
+                :key="d"
+                class="text-center text-[11px] font-extrabold text-on-surface-variant py-1"
+                >{{ d }}</span
+              >
             </div>
             <div class="grid grid-cols-7 gap-1">
               <div v-for="(celda, i) in grillaMes" :key="i">
@@ -558,7 +604,7 @@ const barraDeshabilitada = computed(() => enviando.value || (paso.value < 3 && !
                   :class="[
                     colorTermico(celda.cupos, celda.pasada),
                     diaSeleccionado === celda.fecha ? 'ring-2 ring-primary ring-offset-1 scale-105 shadow-md' : '',
-                    celda.cupos > 0 && !celda.pasada ? 'cursor-pointer active:scale-95' : ''
+                    celda.cupos > 0 && !celda.pasada ? 'cursor-pointer active:scale-95' : '',
                   ]"
                   :disabled="celda.cupos <= 0 || celda.pasada"
                   @click="elegirDia(celda.fecha, celda.cupos, celda.pasada)"
@@ -579,9 +625,7 @@ const barraDeshabilitada = computed(() => enviando.value || (paso.value < 3 && !
           </div>
 
           <div v-if="diaSeleccionado && bloquesDelDia.length" class="space-y-2 pt-2">
-            <p class="text-sm font-bold text-on-surface">
-              {{ diaSeleccionado }} · elige la hora
-            </p>
+            <p class="text-sm font-bold text-on-surface">{{ diaSeleccionado }} · elige la hora</p>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="b in bloquesDelDia"
@@ -697,13 +741,22 @@ const barraDeshabilitada = computed(() => enviando.value || (paso.value < 3 && !
               ></textarea>
             </div>
 
-            <div v-if="negocio.politicasCancelacion" class="sm:col-span-2 bg-surface-container rounded-2xl px-4 py-3 text-xs font-medium text-on-surface-variant max-h-32 overflow-y-auto">
+            <div
+              v-if="negocio.politicasCancelacion"
+              class="sm:col-span-2 bg-surface-container rounded-2xl px-4 py-3 text-xs font-medium text-on-surface-variant max-h-32 overflow-y-auto"
+            >
               <strong class="text-on-surface">Políticas de cancelación:</strong>
               <p class="mt-1 whitespace-pre-wrap">{{ negocio.politicasCancelacion }}</p>
             </div>
-            <label v-if="negocio.politicasCancelacion" class="flex items-start gap-2 text-xs font-medium text-on-surface-variant sm:col-span-2">
+            <label
+              v-if="negocio.politicasCancelacion"
+              class="flex items-start gap-2 text-xs font-medium text-on-surface-variant sm:col-span-2"
+            >
               <input v-model="form.aceptaPoliticas" type="checkbox" required class="mt-0.5 w-4 h-4 accent-primary" />
-              <span>Acepto las políticas de cancelación del negocio. Entiendo que la seña puede no ser reembolsable según estas condiciones.</span>
+              <span
+                >Acepto las políticas de cancelación del negocio. Entiendo que la seña puede no ser reembolsable según
+                estas condiciones.</span
+              >
             </label>
 
             <label class="flex items-start gap-2 text-xs font-medium text-on-surface-variant sm:col-span-2">
@@ -719,7 +772,7 @@ const barraDeshabilitada = computed(() => enviando.value || (paso.value < 3 && !
         </section>
       </template>
 
-      <footer class="text-center text-xs font-medium text-outline pt-2 pb-8">Hecho con ReservaKids</footer>
+      <footer class="text-center text-xs font-medium text-outline pt-2 pb-8">Hecho con DulceVida</footer>
     </div>
 
     <a

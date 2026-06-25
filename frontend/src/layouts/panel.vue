@@ -41,7 +41,7 @@ async function salir() {
     /* token ya inválido */
   }
   auth.logoutLocal()
-  router.push('/login')
+  router.push('/negocios_duenos')
 }
 
 function descargarJson(data) {
@@ -49,7 +49,7 @@ function descargarJson(data) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `reservakids-${auth.slug}-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `dulcevida-${auth.slug}-${new Date().toISOString().slice(0, 10)}.json`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -81,7 +81,7 @@ async function confirmarCierre() {
     toastMensaje.value = 'Negocio cerrado. Se descargó una copia de todos tus datos.'
     toastTipo.value = 'exito'
     auth.logoutLocal()
-    router.push('/login')
+    router.push('/negocios_duenos')
   } catch (e) {
     toastMensaje.value = e.response?.data?.message || 'No se pudo cerrar el negocio'
     toastTipo.value = 'error'
@@ -98,7 +98,7 @@ async function confirmarCierre() {
         </div>
         <div class="min-w-0">
           <h1 class="font-display font-bold text-white text-lg leading-tight truncate">{{ auth.nombreNegocio }}</h1>
-          <p class="text-xs font-bold text-white/60">ReservaKids</p>
+          <p class="text-xs font-bold text-white/60">DulceVida</p>
         </div>
       </div>
 

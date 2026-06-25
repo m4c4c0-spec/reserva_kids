@@ -12,6 +12,8 @@ import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.domain.repository.UsuarioRepository;
+import cl.reservakids.domain.exception.OAuth2PendingRegistrationException;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -286,8 +288,8 @@ public class AuthService {
         // Nuevo registro por OAuth2: requiere nombreNegocio y slug
         if (nombreNegocio == null || nombreNegocio.isBlank()
                 || slug == null || slug.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Para registrarte con " + provider + " necesitas indicar el nombre y slug del negocio");
+            String pendingToken = tokenPort.emitirPendingRegistrationToken(email, provider, info.providerId());
+            throw new OAuth2PendingRegistrationException(pendingToken);
         }
         if (SLUGS_RESERVADOS.contains(slug)) {
             throw new IllegalArgumentException("Ese slug está reservado, elige otro");
@@ -316,6 +318,44 @@ public class AuthService {
         authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
                 AuthEvent.LOGIN, AuthEvent.SUCCESS,
                 "Registro OAuth2 " + provider + ": " + slug);
+        return emitirTokens(usuario, tenant);
+    }
+
+    @Transactional
+    public TokenResponse completarRegistroOAuth2(String pendingToken, String nombreNegocio, String slug) {
+        Claims claims = tokenPort.validarPendingRegistrationToken(pendingToken);
+        String email = claims.get("email", String.class);
+        String provider = claims.get("provider", String.class);
+        String providerId = claims.get("providerId", String.class);
+
+        if (SLUGS_RESERVADOS.contains(slug)) {
+            throw new IllegalArgumentException("Ese slug está reservado, elige otro");
+        }
+        if (tenantRepository.existsBySlug(slug)) {
+            throw new IllegalArgumentException("El slug ya está en uso");
+        }
+        if (usuarioRepository.existsByEmail(email)) {
+            throw new IllegalArgumentException("El email ya está registrado");
+        }
+
+        Tenant tenant = new Tenant();
+        tenant.setNombre(nombreNegocio);
+        tenant.setSlug(slug);
+        tenant = tenantRepository.save(tenant);
+
+        horarioAtencionService.crearHorarioPorDefecto(tenant.getId());
+        rbacService.crearRolesPorDefecto(tenant.getId());
+
+        Usuario usuario = new Usuario();
+        usuario.setTenantId(tenant.getId());
+        usuario.setEmail(email);
+        usuario.setOauthProvider(provider);
+        usuario.setOauthProviderId(providerId);
+        usuarioRepository.save(usuario);
+
+        authEvent.registrar(AuthEvent.ACTOR_DUENO, usuario.getId(), email,
+                AuthEvent.LOGIN, AuthEvent.SUCCESS,
+                "Registro OAuth2 Completado " + provider + ": " + slug);
         return emitirTokens(usuario, tenant);
     }
 

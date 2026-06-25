@@ -85,7 +85,7 @@ public class SistemaController {
         estado.put("email", Map.of(
                 "fallosConsecutivos", email.fallosConsecutivos(),
                 "smtpConfigurado", email.smtpConfigurado(),
-                "ultimoFalloEn", email.ultimoFalloEn() != null ? email.ultimoFalloEn().toString() : null));
+                "ultimoFalloEn", email.ultimoFalloEn() != null ? email.ultimoFalloEn().toString() : ""));
         estado.put("whatsapp", Map.of(
                 "fallosConsecutivos", whatsappAdapter.fallosConsecutivos(),
                 "habilitado", whatsappAdapter.isHabilitadoYConfigurado()));

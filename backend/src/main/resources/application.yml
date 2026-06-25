@@ -99,8 +99,8 @@ app:
     # Base de los enlaces que viajan por email (reset de contraseña, falla 1.3)
     url: ${FRONTEND_URL:http://localhost:5173}
   api:
-    # B1: URL pública de ESTA API — base del notificationUrl del webhook de Mercado Pago.
-    # En producción DEBE ser pública (https://api.tudominio.cl); si queda en localhost,
+    # B1: URL pública base del sistema — webhook de MP, enlaces email.
+    # En producción DEBE ser pública (https://tudominio.cl); si queda en localhost,
     # MP no alcanza el webhook y los pagos online nunca se auto-confirman.
     url: ${API_URL:http://localhost:8080}
   mail:

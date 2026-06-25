@@ -10,6 +10,7 @@ import java.util.Optional;
 
 public interface RolPersonalRepository extends JpaRepository<RolPersonal, Long> {
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"permisos"})
     List<RolPersonal> findByTenantIdOrderByNombre(Long tenantId);
 
     Optional<RolPersonal> findByTenantIdAndNombre(Long tenantId, String nombre);

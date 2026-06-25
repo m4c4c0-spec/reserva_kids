@@ -22,6 +22,15 @@ const negocio = ref(null)
 const cargando = ref(true)
 const noExiste = ref(false)
 
+useSeoMeta({
+  title: () => (negocio.value?.nombre ? `Reservar en ${negocio.value.nombre}` : 'Reservar tu cita'),
+  description: () =>
+    negocio.value?.nombre
+      ? `Agenda tu cita en ${negocio.value.nombre}: elige servicios, día y hora, y paga la seña online de forma segura.`
+      : 'Agenda tu cita: elige servicios, día y hora, y paga la seña online.',
+  robots: 'noindex', // flujo autenticado de agendamiento, no debe indexarse
+})
+
 const paso = ref(1)
 const pasos = ['Servicios', 'Día y hora', 'Pago']
 
@@ -35,10 +44,9 @@ const serviciosSel = computed(() => (negocio.value?.servicios || []).filter((s) 
 const totalClp = computed(() => serviciosSel.value.reduce((acc, s) => acc + (s.precioClp || 0), 0))
 const duracionTotalMin = computed(() => serviciosSel.value.reduce((acc, s) => acc + (s.duracionMin || 0), 0))
 
-const hoyStr = (() => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-})()
+// Fecha "hoy" en hora local de Chile (no UTC): evita que tras las 20:00 UTC-4
+// new Date() en UTC salte al día siguiente. 'en-CA' da formato YYYY-MM-DD.
+const hoyStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
 const fecha = ref(hoyStr)
 const horas = ref([])
 const horaSel = ref(null)
@@ -88,6 +96,7 @@ function aPago() {
 const agendando = ref(false)
 const errorPago = ref('')
 const aceptaPrivacidad = ref(false)
+const redirigiendoMP = ref(false) // aviso antes de salir del sitio hacia Mercado Pago
 
 async function pagar() {
   errorPago.value = ''
@@ -102,6 +111,9 @@ async function pagar() {
       fecha: fecha.value,
       hora: horaSel.value,
     })
+    // Aviso de redirección externa: el usuario ve a dónde va antes de salir del sitio.
+    redirigiendoMP.value = true
+    await new Promise((r) => setTimeout(r, 1000))
     window.location.href = data.initPoint
   } catch (e) {
     if (e.response?.status === 401) {
@@ -303,7 +315,8 @@ onMounted(async () => {
         <label class="flex items-start gap-2 text-xs font-medium text-on-surface-variant">
           <input v-model="aceptaPrivacidad" type="checkbox" required class="mt-0.5 w-4 h-4 accent-primary" />
           <span
-            >Autorizo al negocio a tratar mis datos personales (RUT y datos de contacto) para esta reserva, conforme a la
+            >Autorizo al negocio a tratar mis datos personales (RUT y datos de contacto) para esta reserva, conforme a
+            la
             <NuxtLink to="/privacidad" class="text-secondary underline">política de privacidad</NuxtLink>
             (Ley 19.628).</span
           >
@@ -369,5 +382,21 @@ onMounted(async () => {
         </div>
       </div>
     </footer>
+    <Transition enter-active-class="transition-opacity duration-200 ease-out" enter-from-class="opacity-0">
+      <div
+        v-if="redirigiendoMP"
+        class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-on-surface/50 backdrop-blur-sm p-6 text-center"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="bg-surface-lowest rounded-3xl shadow-lifted px-8 py-7 max-w-sm">
+          <LoadingSpinner mensaje="" />
+          <p class="font-display font-bold text-lg text-on-surface mt-3">Te llevamos a Mercado Pago</p>
+          <p class="text-sm text-on-surface-variant mt-1">
+            Vas a salir del sitio para completar el pago de forma segura. No cierres la ventana.
+          </p>
+        </div>
+      </div>
+    </Transition>
   </main>
 </template>

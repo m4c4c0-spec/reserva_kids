@@ -50,7 +50,7 @@ JWT_SECRET=$(openssl rand -base64 64)          # mínimo 64 bytes
 CRED_ENC_KEY=$(openssl rand -base64 32)        # AES-256: cifra el token de Mercado Pago en reposo (S1)
 CORS_ALLOWED_ORIGINS=https://reservakids.cl
 FRONTEND_URL=https://reservakids.cl            # base de los enlaces de reset de contraseña
-API_URL=https://api.reservakids.cl             # URL PÚBLICA de la API: webhook de Mercado Pago (B1)
+API_URL=https://reservakids.cl                 # URL pública base: webhook de Mercado Pago + enlaces email
 APP_TIMEZONE=America/Santiago
 TRUST_PROXY=true                               # ¡SOLO porque Caddy está delante!
 MAIL_HOST=smtp-relay.brevo.com                 # o smtp.resend.com
@@ -68,8 +68,10 @@ MAIL_FROM=no-reply@reservakids.cl
 
 > ⚠️ `API_URL` **debe ser la URL pública de la API** (la que Mercado Pago usa como
 > `notificationUrl` del webhook). Si queda en `localhost`, MP no alcanza el webhook y los
-> pagos online nunca se auto-confirman. Asegúrate de que `https://api.reservakids.cl/api/public/webhooks/mercadopago/`
-> sea accesible desde internet (sin auth — el endpoint valida la firma del propio MP).
+> pagos online nunca se auto-confirman. Caddy rutea `/api/*` en el mismo dominio principal;
+> `API_URL` debe ser `https://reservakids.cl` (no un subdominio aparte). Asegúrate de que
+> `https://reservakids.cl/api/public/webhooks/mercadopago/` sea accesible desde internet
+> (sin auth — el endpoint valida la firma del propio MP).
 
 > 🔐 `CRED_ENC_KEY` cifra el Access Token de Mercado Pago y el secreto del webhook en la BD.
 > **Guárdala fuera de la BD y no la rotes a la ligera:** al cambiarla, las credenciales MP ya
@@ -108,30 +110,30 @@ de la API la toman por entorno (`FRONTEND_URL` / `NUXT_PUBLIC_API_URL`); en modo
 
 ## 4. Caddy (TLS automático + reverse proxy + SPA)
 
-`/etc/caddy/Caddyfile` (instalar Caddy: `apt install caddy`):
+`/etc/caddy/Caddyfile` (instalar Caddy: `apt install caddy`). El repo trae un `Caddyfile`
+listo con placeholder `TU_DOMINIO`. Sustituye por tu dominio y cópialo:
+
+```bash
+sed "s/TU_DOMINIO/reservakids.cl/g" Caddyfile | sudo tee /etc/caddy/Caddyfile
+```
+
+El contenido resultante (para referencia):
 
 ```caddyfile
+# (TU_DOMINIO ya reemplazado por tu dominio real)
 reservakids.cl {
     encode gzip
 
-    # Headers de seguridad (revisión de ciberseguridad §5.12):
-    # - CSP: solo scripts/estilos self + fuentes Google; imágenes data: y self;
-    #   connect a la API self y a Mercado Pago; sin frames (anti clickjacking).
-    # - X-Content-Type-Options: anti MIME sniffing.
-    # - Referrer-Policy: no envía Referer a terceros (mitiga leak del token de
-    #   reset que viaja en query string).
-    # - frame-ancestors 'none': anti clickjacking (defensa en profundidad con CSP).
     header {
         Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.mercadopago.cl https://*.mercadopago.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.mercadopago.com"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "no-referrer"
         X-Frame-Options "DENY"
         Permissions-Policy "geolocation=(), microphone=(), camera=()"
-        # HSTS: 1 año + preload. Solo si ya sirves todo por HTTPS (Caddy sí).
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # HSTS: 30 días iniciales. Tras validar, subir a 1 año.
+        Strict-Transport-Security "max-age=2592000"
     }
 
-    # API y health check → backend en localhost
     handle /api/* {
         reverse_proxy localhost:8080
     }
@@ -139,13 +141,11 @@ reservakids.cl {
         reverse_proxy localhost:8080
     }
 
-    # Rutas administrativas → contenedor Nuxt SSR del Panel (:3001)
     @panel path /panel /panel/* /admin /admin/* /clientes /clientes/* /staff /staff/* /login /login/* /reset /reset/* /magic /magic/* /oauth2 /oauth2/*
     handle @panel {
         reverse_proxy localhost:3001
     }
 
-    # Todo lo demás (app pública de ventas/reservas) → contenedor Nuxt SSR público (:3000)
     handle {
         reverse_proxy localhost:3000
     }
@@ -156,11 +156,13 @@ www.reservakids.cl {
 }
 ```
 
-> El `Caddyfile` raíz del repo ya contiene exactamente esto (basta `sudo cp Caddyfile /etc/caddy/Caddyfile`).
-> El `Caddyfile.docker` es la variante con hostnames internos de compose, para el modo all-in-docker.
+> La API y el frontend comparten el mismo dominio (sin subdominio `api.`). Caddy rutea
+> `/api/*` al backend y el resto a los frontends Nuxt SSR. Así no hay CORS entre orígenes
+> distintos y las cookies HttpOnly son first-party. El `Caddyfile.docker` es la variante
+> con hostnames internos de compose para el modo all-in-docker.
 
 ```bash
-systemctl reload caddy
+sudo systemctl reload caddy
 ```
 
 Caddy obtiene y renueva los certificados TLS solo (Let's Encrypt) y setea `X-Forwarded-For`

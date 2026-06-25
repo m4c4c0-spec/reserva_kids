@@ -128,6 +128,7 @@ onMounted(cargar)
           v-model="busqueda"
           type="search"
           placeholder="Buscar por nombre o slug"
+          aria-label="Buscar negocio por nombre o slug"
           class="input-festivo input-festivo--con-icono !py-2.5 w-full"
           @input="buscarDebounced"
         />

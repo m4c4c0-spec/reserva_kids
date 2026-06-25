@@ -142,7 +142,7 @@ services:
       retries: 3
       start_period: 15s
 
-  # App del PANEL (administrativa): /panel , /admin , /clientes , /staff , /login , /reset , /oauth2
+  # App del PANEL (administrativa): /panel , /admin , /clientes , /staff , /negocios_duenos , /reset , /oauth2
   # Reutiliza la misma imagen ya construida por frontend-public (image: reservakids-frontend:local).
   frontend-panel:
     build: ./frontend

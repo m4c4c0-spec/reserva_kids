@@ -24,6 +24,7 @@ const enviado = ref(false)
 const error = ref('')
 const cargando = ref(false)
 const toastExito = ref('')
+const verPass = ref(false)
 
 async function solicitar() {
   error.value = ''
@@ -44,7 +45,7 @@ async function confirmar() {
   try {
     await api.post('/auth/reset/confirmar', { token: token.value, nuevaPassword: password.value })
     toastExito.value = 'Contraseña actualizada. Inicia sesión con la nueva.'
-    setTimeout(() => router.push('/login'), 2000)
+    setTimeout(() => router.push('/negocios_duenos'), 2000)
   } catch (e) {
     error.value = e.response?.data?.message || 'El enlace es inválido o ya venció'
   } finally {
@@ -81,12 +82,21 @@ async function confirmar() {
             >
             <input
               v-model="password"
-              type="password"
+              :type="verPass ? 'text' : 'password'"
               required
               minlength="8"
               placeholder="Contraseña nueva (mín. 8)"
-              class="input-festivo input-festivo--con-icono !py-3"
+              aria-label="Contraseña nueva"
+              class="input-festivo input-festivo--con-icono !py-3 !pr-11"
             />
+            <button
+              type="button"
+              class="absolute inset-y-0 right-3 flex items-center text-on-surface-variant hover:text-on-surface"
+              :aria-label="verPass ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+              @click="verPass = !verPass"
+            >
+              <span class="material-symbols-outlined">{{ verPass ? 'visibility_off' : 'visibility' }}</span>
+            </button>
           </div>
           <ErrorBanner :mensaje="error" />
           <BaseButton
@@ -122,6 +132,7 @@ async function confirmar() {
                 type="email"
                 required
                 placeholder="Email de tu cuenta"
+                aria-label="Email de tu cuenta"
                 class="input-festivo input-festivo--con-icono !py-3"
               />
             </div>
@@ -139,7 +150,7 @@ async function confirmar() {
         </template>
 
         <NuxtLink
-          to="/login"
+          to="/negocios_duenos"
           class="block w-full font-medium text-primary hover:text-primary-container text-center transition-colors"
         >
           Volver al inicio de sesión

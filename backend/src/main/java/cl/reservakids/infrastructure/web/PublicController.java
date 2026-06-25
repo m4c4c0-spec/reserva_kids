@@ -4,6 +4,7 @@ import cl.reservakids.application.dto.CalendarioDtos.BloqueResponse;
 import cl.reservakids.application.dto.ReservaDtos.ReservaResponse;
 import cl.reservakids.application.dto.ReservaDtos.SolicitudPublicaRequest;
 import cl.reservakids.application.dto.ServicioDtos.ServicioResponse;
+import cl.reservakids.application.dto.StaffDtos.StaffPublicResponse;
 import cl.reservakids.application.usecase.CalendarioService;
 import cl.reservakids.application.usecase.DisponibilidadService;
 import cl.reservakids.application.usecase.ReservaService;
@@ -11,6 +12,7 @@ import cl.reservakids.domain.exception.RecursoNoEncontradoException;
 import cl.reservakids.domain.model.Tenant;
 import cl.reservakids.domain.repository.ReservaRepository;
 import cl.reservakids.domain.repository.ServicioRepository;
+import cl.reservakids.domain.repository.StaffRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,7 @@ public class PublicController {
 
     private final TenantRepository tenantRepository;
     private final ServicioRepository servicioRepository;
+    private final StaffRepository staffRepository;
     private final ReservaRepository reservaRepository;
     private final CalendarioService calendarioService;
     private final ReservaService reservaService;
@@ -53,12 +56,20 @@ public class PublicController {
                 .stream().map(ServicioResponse::de)
                 .filter(s -> s.stock() == null || s.stock() > 0)
                 .toList();
+
+        List<StaffPublicResponse> staff = staffRepository
+                .findByTenantIdAndActivoTrueOrderByNombre(tenant.getId())
+                .stream()
+                .map(s -> new StaffPublicResponse(s.getNombre(), s.getRol()))
+                .toList();
+
         // V26: teléfono de WhatsApp del salón para el botón flotante "¿Dudas? Habla con el
         // dueño". Lo el dueño en su panel; si no lo configuró no aparece el botón.
         Map<String, Object> body = new HashMap<>();
         body.put("nombre", tenant.getNombre());
         body.put("slug", tenant.getSlug());
         body.put("servicios", servicios);
+        body.put("staff", staff);
         body.put("colorPrimario", tenant.getColorPrimario());
         if (tenant.getTituloPagina() != null && !tenant.getTituloPagina().isBlank()) {
             body.put("tituloPagina", tenant.getTituloPagina());

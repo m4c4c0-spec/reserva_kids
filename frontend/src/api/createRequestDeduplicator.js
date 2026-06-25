@@ -49,7 +49,11 @@ export function createDeduplicatedClient(axiosInstance) {
         return config
       }
       // POST/PUT/PATCH: abortar la anterior (typeahead, doble submit sin key)
-      try { existente.controller.abort() } catch (_) { /* ya abortado */ }
+      try {
+        existente.controller.abort()
+      } catch (_) {
+        /* ya abortado */
+      }
     }
 
     const controller = new AbortController()
@@ -90,7 +94,11 @@ export function createDeduplicatedClient(axiosInstance) {
  */
 export function cancelarPendientes(axiosInstance) {
   for (const [clave, wrapper] of pendientes) {
-    try { wrapper.controller.abort() } catch (_) { /* ok */ }
+    try {
+      wrapper.controller.abort()
+    } catch (_) {
+      /* ok */
+    }
   }
   pendientes.clear()
 }

@@ -9,7 +9,11 @@
  */
 export function useHaptics() {
   const vibrate = (pattern) => {
-    try { navigator.vibrate?.(pattern) } catch { /* no-op */ }
+    try {
+      navigator.vibrate?.(pattern)
+    } catch {
+      /* no-op */
+    }
   }
 
   return {

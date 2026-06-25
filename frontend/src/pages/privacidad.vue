@@ -1,7 +1,13 @@
 <script setup>
 definePageMeta({ layout: 'default' })
 
-const contacto = 'hola@reservakids.cl'
+useSeoMeta({
+  title: 'Política de privacidad',
+  description:
+    'Cómo tratamos y protegemos tus datos personales en cumplimiento de la Ley 21.719 de protección de datos.',
+})
+
+const contacto = 'hola@dulcevida.cl'
 </script>
 
 <template>
@@ -14,8 +20,8 @@ const contacto = 'hola@reservakids.cl'
         <div>
           <h2 class="font-display text-xl font-semibold text-on-surface mb-2">1. Responsable del tratamiento</h2>
           <p>
-            ReservaKids SpA, RUT 77.123.456-7, con domicilio en Santiago de Chile, es responsable de los datos
-            personales que se tratan a través de esta plataforma. Puedes contactarnos en
+            DulceVida SpA, RUT 77.123.456-7, con domicilio en Santiago de Chile, es responsable de los datos personales
+            que se tratan a través de esta plataforma. Puedes contactarnos en
             <a :href="'mailto:' + contacto" class="text-secondary hover:underline">{{ contacto }}</a
             >.
           </p>
@@ -25,8 +31,14 @@ const contacto = 'hola@reservakids.cl'
           <h2 class="font-display text-xl font-semibold text-on-surface mb-2">2. Datos que recolectamos</h2>
           <ul class="list-disc pl-5 space-y-1">
             <li>Datos de identidad: nombre, RUT, teléfono y correo electrónico del apoderado.</li>
-            <li>Datos de la reserva: número de niños asistentes (solo cantidad, sin nombres ni edades), comuna y comentarios.</li>
-            <li>No recolectamos datos identificativos de menores: por política de privacidad, no almacenamos nombres ni fechas de nacimiento de niños.</li>
+            <li>
+              Datos de la reserva: número de niños asistentes (solo cantidad, sin nombres ni edades), comuna y
+              comentarios.
+            </li>
+            <li>
+              No recolectamos datos identificativos de menores: por política de privacidad, no almacenamos nombres ni
+              fechas de nacimiento de niños.
+            </li>
             <li>Datos de uso: navegación, preferencias de servicio e historial de reservas.</li>
             <li>Datos de pago: procesados por Mercado Pago; no almacenamos tarjetas ni tokens bancarios.</li>
           </ul>

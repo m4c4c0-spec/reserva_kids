@@ -4,11 +4,16 @@
 	encode gzip
 
 	header {
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.facebook.com; connect-src 'self' https://*.mercadopago.cl https://*.mercadopago.com https://www.facebook.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.mercadopago.com"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer"
 		X-Frame-Options "DENY"
 		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+	}
+	# CSP lo gestiona nuxt-security (nonces por request) para las rutas SSR.
+	# Solo lo seteamos acá para las rutas de API, que devuelven JSON.
+	@api path /api/* /actuator/health
+	header @api {
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
 	}
 
 	handle /api/* {
@@ -20,7 +25,7 @@
 
 	# ── Micro-Frontends (Nuxt 3 SSR): ruteo por path a dos contenedores independientes ──
 	# Rutas administrativas → contenedor 'frontend-panel' (Node SSR en :3000).
-	@panel path /panel /panel/* /admin /admin/* /clientes /clientes/* /staff /staff/* /login /login/* /reset /reset/* /magic /magic/* /oauth2 /oauth2/*
+	@panel path /panel /panel/* /admin /admin/* /clientes /clientes/* /staff /staff/* /negocios_duenos /negocios_duenos/* /reset /reset/* /magic /magic/* /oauth2 /oauth2/*
 	handle @panel {
 		reverse_proxy frontend-panel:3000
 	}

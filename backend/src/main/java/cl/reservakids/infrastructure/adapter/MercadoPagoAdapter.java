@@ -31,7 +31,7 @@ public class MercadoPagoAdapter implements PasarelaPagoPort {
     private String frontendUrl;
 
     // URL base para recibir los webhooks, debe ser pública
-    // Ejemplo: https://api.reservakids.cl/api/public/webhooks/mercadopago
+    // Ejemplo: https://reservakids.cl/api/public/webhooks/mercadopago
     @Value("${app.api.url:http://localhost:8080}")
     private String apiUrl;
 

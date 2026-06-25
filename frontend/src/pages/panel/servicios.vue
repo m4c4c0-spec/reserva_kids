@@ -116,8 +116,9 @@ onMounted(cargar)
         (opcional)
       </label>
       <div v-if="editando.esAdicional">
-        <label class="block text-sm font-bold text-on-surface-variant mb-1">Stock disponible</label>
+        <label for="svc-stock" class="block text-sm font-bold text-on-surface-variant mb-1">Stock disponible</label>
         <input
+          id="svc-stock"
           v-model.number="editando.stock"
           type="number"
           min="0"

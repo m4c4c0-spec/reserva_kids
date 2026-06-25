@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useConfetti } from '../composables/useConfetti'
 import axios from 'axios'
@@ -16,9 +16,12 @@ const router = useRouter()
 const auth = useAuthStore()
 const { canvasRef: confettiCanvas, lanzar: lanzarConfetti } = useConfetti()
 
+const { isSingleTenant } = useSingleTenant()
+
 const modo = ref('login')
 const email = ref('')
 const password = ref('')
+const confirmarPassword = ref('')
 const nombreNegocio = ref('')
 const slug = ref('')
 const error = ref('')
@@ -26,12 +29,34 @@ const cargando = ref(false)
 
 const magicEnviado = ref(false)
 
+function slugificar(texto) {
+  return texto
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
 const withCreds = { withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } }
 const baseURL = (import.meta.env.VITE_API_URL || '') + '/api'
 
-const emailYaRegistrado = computed(() =>
-  modo.value === 'registro' && error.value === 'El email ya está registrado',
+const emailYaRegistrado = computed(
+  () => modo.value === 'registro' && error.value.includes('email') && error.value.includes('registrado'),
 )
+
+const slugManual = ref(false)
+watch(nombreNegocio, (val) => {
+  if (!slugManual.value && modo.value === 'registro') {
+    slug.value = slugificar(val)
+  }
+})
+watch(slug, () => {
+  slugManual.value = true
+})
 
 async function pedirMagicLink() {
   error.value = ''
@@ -78,20 +103,36 @@ const reposo = () => {
 
 async function enviar() {
   error.value = ''
+
+  if (modo.value === 'registro') {
+    if (!nombreNegocio.value.trim()) {
+      error.value = 'Escribe el nombre de tu negocio'
+      return
+    }
+    if (!slug.value.trim()) {
+      error.value = 'Escribe un identificador (slug) para tu negocio'
+      return
+    }
+    if (password.value !== confirmarPassword.value) {
+      error.value = 'Las contraseñas no coinciden'
+      return
+    }
+  }
+
   cargando.value = true
   try {
     if (modo.value === 'login') {
       await auth.login(email.value, password.value)
     } else {
       await auth.registrar({
-        nombreNegocio: nombreNegocio.value,
-        slug: slug.value,
+        nombreNegocio: nombreNegocio.value.trim(),
+        slug: slug.value.trim(),
         email: email.value,
         password: password.value,
       })
     }
     lanzarConfetti()
-    setTimeout(() => router.push('/panel'), 900)
+    router.push('/panel')
   } catch (e) {
     error.value = e.response?.data?.message || 'Error de conexión'
     cargando.value = false
@@ -105,6 +146,13 @@ async function enviar() {
     :style="{ backgroundImage: `url(${bgV2})` }"
   >
     <canvas ref="confettiCanvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
+
+    <div
+      class="absolute -top-10 -left-10 w-48 h-48 rounded-full bg-primary-container/30 blur-3xl pointer-events-none"
+    ></div>
+    <div
+      class="absolute bottom-10 -right-10 w-56 h-56 rounded-full bg-secondary-container/30 blur-3xl pointer-events-none"
+    ></div>
 
     <div class="w-full max-w-md relative z-10">
       <div class="text-center mb-8 relative">
@@ -126,8 +174,9 @@ async function enviar() {
             <img :src="charCake" alt="Personaje torta" class="w-32 h-32 object-contain drop-shadow-xl character-img" />
           </div>
         </div>
+        <p class="font-display font-bold text-sm tracking-widest uppercase text-secondary mb-2">Acceso a dueños</p>
         <h1 class="font-display font-extrabold text-4xl leading-tight tracking-tight text-primary">
-          ¡Bienvenido a ReservaKids!
+          ¡Bienvenido a DulceVida!
         </h1>
         <p class="text-on-surface-variant font-medium mt-1">
           {{ modo === 'login' ? '¡Que empiece la fiesta!' : 'Crea la cuenta de tu negocio' }}
@@ -136,7 +185,7 @@ async function enviar() {
 
       <div class="glass-card rounded-3xl p-6 shadow-soft relative">
         <form class="space-y-4" @submit.prevent="enviar">
-          <template v-if="modo === 'registro'">
+          <template v-if="modo === 'registro' && !isSingleTenant">
             <div>
               <label class="block text-sm font-bold text-on-surface mb-1" for="negocio">Nombre del negocio</label>
               <div class="relative">
@@ -218,6 +267,31 @@ async function enviar() {
             </div>
           </div>
 
+          <div v-if="modo === 'registro'">
+            <label class="block text-sm font-bold text-on-surface mb-1" for="confirmar">Confirmar contraseña</label>
+            <div class="relative">
+              <span
+                class="material-symbols-outlined absolute inset-y-0 left-3 flex items-center text-on-surface-variant pointer-events-none"
+                >lock_reset</span
+              >
+              <input
+                id="confirmar"
+                v-model="confirmarPassword"
+                type="password"
+                required
+                minlength="8"
+                placeholder="••••••••"
+                class="input-festivo input-festivo--con-icono !py-3"
+                :class="{ 'border-2': confirmarPassword && password !== confirmarPassword ? 'border-error' : '' }"
+                @focus="taparse"
+                @blur="reposo"
+              />
+            </div>
+            <p v-if="confirmarPassword && password !== confirmarPassword" class="text-xs font-semibold text-error mt-1">
+              Las contraseñas no coinciden
+            </p>
+          </div>
+
           <ErrorBanner :mensaje="error" />
 
           <template v-if="emailYaRegistrado">
@@ -285,7 +359,7 @@ async function enviar() {
           >
             ¿Olvidaste tu contraseña?
           </NuxtLink>
-          <p class="font-medium text-on-surface-variant">
+          <p v-if="!isSingleTenant" class="font-medium text-on-surface-variant">
             {{ modo === 'login' ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?' }}
             <button
               class="font-bold text-secondary hover:text-secondary-container transition-colors"
@@ -301,6 +375,16 @@ async function enviar() {
             ¿Buscas reservar una fiesta? Entra como cliente
           </NuxtLink>
         </div>
+      </div>
+
+      <div class="text-center mt-6">
+        <NuxtLink
+          to="/admin/login"
+          class="inline-flex items-center gap-1.5 text-xs font-semibold text-outline hover:text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-secondary-container rounded-full px-3 py-1.5"
+        >
+          <span class="material-symbols-outlined text-[14px]">shield_person</span>
+          Consola de plataforma
+        </NuxtLink>
       </div>
     </div>
   </main>
