@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 const API_TARGET = process.env.VITE_API_TARGET || 'http://localhost:8080'
 const SINGLE_TENANT_SLUG = process.env.VITE_SINGLE_TENANT_SLUG || ''
 const SINGLE_TENANT_NAME = process.env.VITE_SINGLE_TENANT_NAME || SINGLE_TENANT_SLUG
+const REGISTRATION_OPEN = process.env.VITE_REGISTRATION_OPEN !== 'false'
 const API_URL = process.env.VITE_API_URL || ''
 
 export default defineNuxtConfig({
@@ -74,6 +75,7 @@ export default defineNuxtConfig({
       apiUrl: API_URL,
       singleTenantSlug: SINGLE_TENANT_SLUG,
       singleTenantName: SINGLE_TENANT_NAME,
+      registrationOpen: REGISTRATION_OPEN,
     },
   },
 

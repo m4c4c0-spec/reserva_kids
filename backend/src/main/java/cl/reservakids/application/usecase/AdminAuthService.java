@@ -6,7 +6,6 @@ import cl.reservakids.domain.model.AuthEvent;
 import cl.reservakids.domain.model.RefreshTokenAdmin;
 import cl.reservakids.domain.repository.AdministradorRepository;
 import cl.reservakids.domain.repository.RefreshTokenAdminRepository;
-import cl.reservakids.infrastructure.oauth2.OAuth2Service;
 import cl.reservakids.infrastructure.oauth2.OAuth2UserInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,13 +14,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -42,7 +37,8 @@ public class AdminAuthService {
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
     private final AuthEventPort authEvent;
-    private final OAuth2Service oauth2Service;
+    private final OAuth2Port oauth2Port;
+    private final AuthCrypto authCrypto;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${app.jwt.refresh-days}")
@@ -84,7 +80,7 @@ public class AdminAuthService {
      */
     @Transactional(noRollbackFor = BadCredentialsException.class)
     public AdminTokenResponse refresh(String refreshTokenPlano) {
-        RefreshTokenAdmin actual = refreshTokenRepository.findByTokenHash(sha256(refreshTokenPlano))
+        RefreshTokenAdmin actual = refreshTokenRepository.findByTokenHash(authCrypto.hashToken(refreshTokenPlano))
                 .orElseThrow(() -> new BadCredentialsException("Refresh token inválido o expirado"));
         if (actual.isRevocado()) {
             refreshTokenRepository.revocarTodosDeAdmin(actual.getAdministradorId());
@@ -114,7 +110,7 @@ public class AdminAuthService {
                     AuthEvent.LOGOUT, AuthEvent.SUCCESS, null);
         }
         if (refreshTokenPlano != null && !refreshTokenPlano.isBlank()) {
-            refreshTokenRepository.findByTokenHash(sha256(refreshTokenPlano))
+            refreshTokenRepository.findByTokenHash(authCrypto.hashToken(refreshTokenPlano))
                     .ifPresent(t -> refreshTokenRepository.revocarTodosDeAdmin(t.getAdministradorId()));
         }
     }
@@ -126,7 +122,7 @@ public class AdminAuthService {
         RefreshTokenAdmin refresh = new RefreshTokenAdmin();
         refresh.setId(UUID.randomUUID());
         refresh.setAdministradorId(admin.getId());
-        refresh.setTokenHash(sha256(refreshPlano));
+        refresh.setTokenHash(authCrypto.hashToken(refreshPlano));
         refresh.setExpiraEn(OffsetDateTime.now().plusDays(refreshDays));
         refreshTokenRepository.save(refresh);
 
@@ -141,7 +137,7 @@ public class AdminAuthService {
 
     @Transactional
     public AdminTokenResponse oauth2Login(String provider, String code, String redirectUri) {
-        OAuth2UserInfo info = oauth2Service.verify(provider, code, redirectUri);
+        OAuth2UserInfo info = oauth2Port.verify(provider, code, redirectUri);
         String email = normalizarEmail(info.email());
 
         var existingByProvider = administradorRepository.findByOauthProviderAndOauthProviderId(
@@ -165,14 +161,5 @@ public class AdminAuthService {
 
         throw new org.springframework.security.authentication.BadCredentialsException(
                 "No existe un administrador con ese email");
-    }
-
-    private static String sha256(String valor) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(md.digest(valor.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 }

@@ -29,4 +29,7 @@ export const adminService = {
   crearAdmin(payload) {
     return adminApi.post('/admin/administradores', payload).then((r) => r.data)
   },
+  crearNegocio(payload) {
+    return adminApi.post('/admin/negocios', payload).then((r) => r.data)
+  },
 }

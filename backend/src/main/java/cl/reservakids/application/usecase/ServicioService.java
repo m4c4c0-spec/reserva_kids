@@ -19,7 +19,7 @@ public class ServicioService {
 
     private final ServicioRepository servicioRepository;
     private final AuditPort audit;
-    private final cl.reservakids.infrastructure.security.HtmlSanitizer sanitizer;
+    private final HtmlSanitizerPort sanitizer;
 
     @Transactional(readOnly = true)
     public List<ServicioResponse> listar(Long tenantId) {

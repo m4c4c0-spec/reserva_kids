@@ -69,6 +69,7 @@ export default [
         // ── Composables propios auto-importados desde src/composables ──
         instalar: 'readonly',
         puedeInstalar: 'readonly',
+        useSingleTenant: 'readonly',
         process: 'readonly',
       },
     },

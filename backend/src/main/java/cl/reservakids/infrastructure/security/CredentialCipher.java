@@ -1,5 +1,6 @@
 package cl.reservakids.infrastructure.security;
 
+import cl.reservakids.application.usecase.CredentialCipherPort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -13,22 +14,13 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 /**
- * S1 (revisión de seguridad): cifra credenciales de terceros en reposo (el Access Token de
- * Mercado Pago y el secreto de firma del webhook). Antes viajaban en texto plano en la BD —
- * un dump o un backup filtrado exponía la credencial que permite cobrar dinero de TODOS los
- * negocios. AES-256-GCM (confidencialidad + integridad), IV aleatorio de 12 bytes por mensaje.
- *
- * <p>Compatibilidad: {@link #decrypt} tolera valores legados en texto plano (sin el prefijo
- * {@code enc:v1:}) y los devuelve tal cual — así los tokens guardados antes de este cambio
- * siguen funcionando y se re-cifran solos la próxima vez que el dueño los guarde.
- *
- * <p>Clave: {@code CRED_ENC_KEY} (base64 de 32 bytes). Si no se define, se deriva de
- * {@code JWT_SECRET} (SHA-256) para que dev/compose funcione sin configuración extra — en
- * producción conviene una clave dedicada para poder rotarla sin invalidar los JWT.
+ * Cifrado AES-256-GCM de credenciales de terceros en reposo (token Mercado Pago, secreto webhook, API key Khipu).
+ * Cada cifrado usa un IV aleatorio de 12 bytes prefijado al ciphertext; HMAC-SHA256 para derivar clave desde
+ * JWT_SECRET cuando no hay CRED_ENC_KEY explícita.
  */
 @Slf4j
 @Component
-public class CredentialCipher {
+public class CredentialCipher implements CredentialCipherPort {
 
     private static final String PREFIJO = "enc:v1:";
     private static final String TRANSFORMACION = "AES/GCM/NoPadding";

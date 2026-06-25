@@ -20,6 +20,18 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     Page<Reserva> findByTenantIdAndEstadoOrderByCreadaEnDesc(Long tenantId, EstadoReserva estado, Pageable pageable);
     Optional<Reserva> findByIdAndTenantId(Long id, Long tenantId);
 
+    /** Staff: reservas confirmadas/realizadas de un tenant en un rango de fechas (DB-side filter, no N+1). */
+    @Query("""
+            SELECT r FROM Reserva r
+            WHERE r.tenantId = :tenantId AND r.inicio IS NOT NULL
+              AND r.inicio >= :desde AND r.inicio < :hasta
+              AND r.estado IN :estados
+            ORDER BY r.inicio ASC""")
+    List<Reserva> findEventosDelDia(@Param("tenantId") Long tenantId,
+                                   @Param("desde") OffsetDateTime desde,
+                                   @Param("hasta") OffsetDateTime hasta,
+                                   @Param("estados") Collection<EstadoReserva> estados);
+
     /**
      * Búsqueda del panel del dueño: coincide por #reserva exacto (cuando el término es
      * numérico, {@code reservaId}) o por nombre de cliente (subconsulta sobre Cliente,

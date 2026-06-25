@@ -27,6 +27,7 @@ public class CicloReservaJobs {
 
     private final ReservaRepository reservaRepository;
     private final BloqueDisponibleRepository bloqueRepository;
+    private final DistributedLockPort distributedLock;
     private final Clock clock;
 
     @Value("${app.reservas.expiracion-horas}")
@@ -47,13 +48,18 @@ public class CicloReservaJobs {
     @Scheduled(fixedDelayString = "PT5M", initialDelayString = "PT3M")
     @Transactional
     public void expirarCitasSinPago() {
+        if (!distributedLock.tryAcquire("expirarCitasSinPago")) return;
         OffsetDateTime limite = OffsetDateTime.now(clock).minusMinutes(citaPagoExpiracionMin);
         List<Reserva> vencidas = reservaRepository
                 .findByEstadoAndInicioIsNotNullAndCreadaEnBefore(EstadoReserva.PENDIENTE_PAGO, limite);
 
         for (Reserva reserva : vencidas) {
-            cancelarPorExpiracion(reserva,
-                    "[Expiración] Cita cancelada por falta de pago tras %d min.".formatted(citaPagoExpiracionMin));
+            try {
+                cancelarPorExpiracion(reserva,
+                        "[Expiración] Cita cancelada por falta de pago tras %d min.".formatted(citaPagoExpiracionMin));
+            } catch (Exception e) {
+                log.error("Error al expirar cita sin pago #{}: {}", reserva.getId(), e.getMessage());
+            }
         }
         if (!vencidas.isEmpty()) {
             log.info("Job de expiración: {} citas sin pago canceladas", vencidas.size());
@@ -64,13 +70,18 @@ public class CicloReservaJobs {
     @Scheduled(fixedDelayString = "PT15M", initialDelayString = "PT1M")
     @Transactional
     public void expirarPendientes() {
+        if (!distributedLock.tryAcquire("expirarPendientes")) return;
         OffsetDateTime limite = OffsetDateTime.now(clock).minusHours(expiracionHoras);
         List<Reserva> vencidas = reservaRepository
                 .findByEstadoAndCreadaEnBefore(EstadoReserva.PENDIENTE, limite);
 
         for (Reserva reserva : vencidas) {
-            cancelarPorExpiracion(reserva,
-                    "[Expiración] Cancelada automáticamente tras %d h sin cotización.".formatted(expiracionHoras));
+            try {
+                cancelarPorExpiracion(reserva,
+                        "[Expiración] Cancelada automáticamente tras %d h sin cotización.".formatted(expiracionHoras));
+            } catch (Exception e) {
+                log.error("Error al expirar pendiente #{}: {}", reserva.getId(), e.getMessage());
+            }
         }
         if (!vencidas.isEmpty()) {
             log.info("Job de expiración: {} solicitudes pendientes canceladas", vencidas.size());
@@ -85,13 +96,18 @@ public class CicloReservaJobs {
     @Scheduled(fixedDelayString = "PT1H", initialDelayString = "PT2M")
     @Transactional
     public void expirarCotizadas() {
+        if (!distributedLock.tryAcquire("expirarCotizadas")) return;
         OffsetDateTime limite = OffsetDateTime.now(clock).minusDays(cotizacionExpiracionDias);
         List<Reserva> vencidas = reservaRepository
                 .findByEstadoAndCotizadaEnBefore(EstadoReserva.COTIZADA, limite);
 
         for (Reserva reserva : vencidas) {
-            cancelarPorExpiracion(reserva,
-                    "[Expiración] Cotización sin respuesta tras %d días.".formatted(cotizacionExpiracionDias));
+            try {
+                cancelarPorExpiracion(reserva,
+                        "[Expiración] Cotización sin respuesta tras %d días.".formatted(cotizacionExpiracionDias));
+            } catch (Exception e) {
+                log.error("Error al expirar cotizada #{}: {}", reserva.getId(), e.getMessage());
+            }
         }
         if (!vencidas.isEmpty()) {
             log.info("Job de expiración: {} cotizaciones sin respuesta canceladas", vencidas.size());
@@ -106,12 +122,17 @@ public class CicloReservaJobs {
     @Scheduled(cron = "0 15 4 * * *")
     @Transactional
     public void realizarConcluidas() {
+        if (!distributedLock.tryAcquire("realizarConcluidas")) return;
         LocalDate hoy = LocalDate.now(clock);
         List<Reserva> concluidas = reservaRepository
                 .findByEstadoConBloqueAnterior(EstadoReserva.CONFIRMADA, hoy);
 
         for (Reserva reserva : concluidas) {
-            reserva.transicionarA(EstadoReserva.REALIZADA);
+            try {
+                reserva.transicionarA(EstadoReserva.REALIZADA);
+            } catch (Exception e) {
+                log.error("Error al realizar reserva concluida #{}: {}", reserva.getId(), e.getMessage());
+            }
         }
         if (!concluidas.isEmpty()) {
             log.info("Job de cierre: {} reservas confirmadas marcadas REALIZADA", concluidas.size());

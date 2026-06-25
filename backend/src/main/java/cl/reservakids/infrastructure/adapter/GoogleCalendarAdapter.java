@@ -140,7 +140,8 @@ public class GoogleCalendarAdapter {
                 log.info("Google Calendar: access token renovado");
                 return json.get("access_token").asText();
             }
-            log.warn("Google: no se pudo renovar el access token: {}", response);
+            String errorDesc = json.has("error") ? json.get("error").asText() : "sin_detalle";
+            log.warn("Google: no se pudo renovar el access token (error={})", errorDesc);
             return null;
         } catch (Exception e) {
             log.error("Error al renovar access token de Google: {}", e.getMessage());

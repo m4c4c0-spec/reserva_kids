@@ -25,6 +25,7 @@ public class ClienteRetencionJobs {
 
     private final ClienteRepository clienteRepository;
     private final ReservaRepository reservaRepository;
+    private final DistributedLockPort distributedLock;
     private final Clock clock;
 
     @Value("${app.clientes.retencion-meses}")
@@ -40,19 +41,24 @@ public class ClienteRetencionJobs {
     @Scheduled(cron = "0 0 5 1 * *")
     @Transactional
     public void anonimizarInactivos() {
+        if (!distributedLock.tryAcquire("anonimizarInactivos")) return;
         OffsetDateTime ahora = OffsetDateTime.now(clock);
         OffsetDateTime limite = ahora.minusMonths(retencionClienteMeses);
         int anonimizados = 0;
 
         for (Cliente cliente : clienteRepository.findByAnonimizadoEnIsNullAndUltimaActividadEnBefore(limite)) {
-            if (reservaRepository.existsByClienteIdAndEstadoIn(cliente.getId(), EstadoReserva.ACTIVOS)) {
-                continue; // todavía tiene reservas vigentes: su actividad no terminó
+            try {
+                if (reservaRepository.existsByClienteIdAndEstadoIn(cliente.getId(), EstadoReserva.ACTIVOS)) {
+                    continue; // todavía tiene reservas vigentes: su actividad no terminó
+                }
+                cliente.anonimizar(ahora);
+                // Falla 3.2 (5 años): los comentarios de sus reservas también son datos personales
+                reservaRepository.anonimizarComentariosDeCliente(
+                        cliente.getId(), Reserva.COMENTARIOS_ANONIMIZADOS);
+                anonimizados++;
+            } catch (Exception e) {
+                log.error("Error al anonimizar cliente #{}: {}", cliente.getId(), e.getMessage());
             }
-            cliente.anonimizar(ahora);
-            // Falla 3.2 (5 años): los comentarios de sus reservas también son datos personales
-            reservaRepository.anonimizarComentariosDeCliente(
-                    cliente.getId(), Reserva.COMENTARIOS_ANONIMIZADOS);
-            anonimizados++;
         }
         if (anonimizados > 0) {
             log.info("Ley 21.719: {} clientes anonimizados por inactividad (> {} meses)",

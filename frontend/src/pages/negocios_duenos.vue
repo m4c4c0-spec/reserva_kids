@@ -15,8 +15,10 @@ definePageMeta({ layout: 'default' })
 const router = useRouter()
 const auth = useAuthStore()
 const { canvasRef: confettiCanvas, lanzar: lanzarConfetti } = useConfetti()
+const runtimeConfig = useRuntimeConfig()
 
 const { isSingleTenant } = useSingleTenant()
+const registroAbierto = computed(() => !isSingleTenant.value && runtimeConfig.public.registrationOpen !== false)
 
 const modo = ref('login')
 const email = ref('')
@@ -185,7 +187,7 @@ async function enviar() {
 
       <div class="glass-card rounded-3xl p-6 shadow-soft relative">
         <form class="space-y-4" @submit.prevent="enviar">
-          <template v-if="modo === 'registro' && !isSingleTenant">
+          <template v-if="modo === 'registro' && registroAbierto">
             <div>
               <label class="block text-sm font-bold text-on-surface mb-1" for="negocio">Nombre del negocio</label>
               <div class="relative">
@@ -359,7 +361,7 @@ async function enviar() {
           >
             ¿Olvidaste tu contraseña?
           </NuxtLink>
-          <p v-if="!isSingleTenant" class="font-medium text-on-surface-variant">
+          <p v-if="registroAbierto" class="font-medium text-on-surface-variant">
             {{ modo === 'login' ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?' }}
             <button
               class="font-bold text-secondary hover:text-secondary-container transition-colors"

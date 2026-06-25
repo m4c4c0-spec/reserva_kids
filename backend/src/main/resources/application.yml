@@ -148,9 +148,18 @@ app:
     # Límites por minuto por IP, según el patrón de la ruta. El webhook tiene el más estricto
     # para mitigar flooding e IDOR contra la API de Mercado Pago. Los endpoints de auth tienen
     # límites bajos para frustrar fuerza bruta.
+    # Los límites globales son el tope total de requests por minuto (sumando todas las IPs)
+    # y previenen ataques DDoS distribuidos contra endpoints críticos como registro y login.
     public-max-por-minuto: ${RATE_LIMIT_PUBLIC:30}
+    public-reservas-max-por-minuto: ${RATE_LIMIT_PUBLIC_RESERVAS:5}
+    public-reservas-global-max-por-minuto: ${RATE_LIMIT_PUBLIC_RESERVAS_GLOBAL:100}
     auth-max-por-minuto: ${RATE_LIMIT_AUTH:10}
+    auth-global-max-por-minuto: ${RATE_LIMIT_AUTH_GLOBAL:200}
+    auth-register-max-por-minuto: ${RATE_LIMIT_AUTH_REGISTER:3}
+    auth-register-global-max-por-minuto: ${RATE_LIMIT_AUTH_REGISTER_GLOBAL:60}
     cliente-auth-max-por-minuto: ${RATE_LIMIT_CLIENTE_AUTH:10}
+    cliente-auth-register-max-por-minuto: ${RATE_LIMIT_CLIENTE_AUTH_REGISTER:3}
+    cliente-auth-register-global-max-por-minuto: ${RATE_LIMIT_CLIENTE_AUTH_REGISTER_GLOBAL:60}
     admin-auth-max-por-minuto: ${RATE_LIMIT_ADMIN_AUTH:5}
     panel-max-por-minuto: ${RATE_LIMIT_PANEL:60}
     webhook-max-por-minuto: ${RATE_LIMIT_WEBHOOK:5}

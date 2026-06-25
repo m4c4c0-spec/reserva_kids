@@ -18,7 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Recordatorios automáticos 24h antes del evento (RNF-08).
@@ -35,6 +39,7 @@ public class RecordatorioJobs {
     private final TenantRepository tenantRepository;
     private final ReservaServicioRepository reservaServicioRepository;
     private final NotificacionPort notificacion;
+    private final DistributedLockPort distributedLock;
     private final Clock clock;
 
     @Value("${app.recordatorio.horas-antes:24}")
@@ -48,6 +53,7 @@ public class RecordatorioJobs {
     @Scheduled(fixedDelayString = "PT30M", initialDelayString = "PT2M")
     @Transactional(readOnly = true)
     public void enviarRecordatorios() {
+        if (!distributedLock.tryAcquire("enviarRecordatorios")) return;
         OffsetDateTime ahora = OffsetDateTime.now(clock);
 
         // ── Citas por hora (inicio entre ahora+23h y ahora+24h) ──
@@ -55,15 +61,33 @@ public class RecordatorioJobs {
         OffsetDateTime hasta = ahora.plusHours(horasAntes);
 
         List<Reserva> citas = reservaRepository.findCitasConfirmadasProximas(desde, hasta);
+
+        // Batch-load tenants y clientes: 1 query cada uno en vez de N
+        Map<Long, Tenant> tenants = batchTenants(citas);
+        Map<Long, Cliente> clientes = batchClientes(citas);
+
         for (Reserva cita : citas) {
-            procesarCita(cita);
+            try {
+                procesarCita(cita, tenants, clientes);
+            } catch (Exception e) {
+                log.error("Error al procesar recordatorio de cita #{}: {}", cita.getId(), e.getMessage());
+            }
         }
 
         // ── Cumpleaños (bloque.fecha = mañana) ──
         LocalDate manana = LocalDate.now(clock).plusDays(1);
         List<Reserva> cumpleanos = reservaRepository.findCumpleanosConfirmadosEnFecha(manana);
+        if (!cumpleanos.isEmpty()) {
+            // Batch-load tenants y clientes para cumpleaños también
+            tenants = batchTenants(cumpleanos);
+            clientes = batchClientes(cumpleanos);
+        }
         for (Reserva r : cumpleanos) {
-            procesarCumpleano(r);
+            try {
+                procesarCumpleano(r, tenants, clientes);
+            } catch (Exception e) {
+                log.error("Error al procesar recordatorio de cumpleaños #{}: {}", r.getId(), e.getMessage());
+            }
         }
 
         if (!citas.isEmpty() || !cumpleanos.isEmpty()) {
@@ -71,13 +95,28 @@ public class RecordatorioJobs {
         }
     }
 
-    private void procesarCita(Reserva cita) {
-        Tenant tenant = tenantRepository.findById(cita.getTenantId()).orElse(null);
-        if (tenant == null || !tenant.isActivo()) return;
+    private Map<Long, Tenant> batchTenants(List<Reserva> reservas) {
+        Set<Long> ids = reservas.stream().map(Reserva::getTenantId).collect(Collectors.toSet());
+        if (ids.isEmpty()) return Collections.emptyMap();
+        return tenantRepository.findAllById(ids).stream()
+                .filter(Tenant::isActivo)
+                .collect(Collectors.toMap(Tenant::getId, t -> t));
+    }
 
-        Cliente cliente = clienteRepository
-                .findByIdAndTenantId(cita.getClienteId(), cita.getTenantId()).orElse(null);
-        if (cliente == null || cliente.isAnonimizado()) return;
+    private Map<Long, Cliente> batchClientes(List<Reserva> reservas) {
+        Set<Long> ids = reservas.stream().map(Reserva::getClienteId).collect(Collectors.toSet());
+        if (ids.isEmpty()) return Collections.emptyMap();
+        return clienteRepository.findAllById(ids).stream()
+                .filter(c -> !c.isAnonimizado())
+                .collect(Collectors.toMap(Cliente::getId, c -> c));
+    }
+
+    private void procesarCita(Reserva cita, Map<Long, Tenant> tenants, Map<Long, Cliente> clientes) {
+        Tenant tenant = tenants.get(cita.getTenantId());
+        if (tenant == null) return;
+
+        Cliente cliente = clientes.get(cita.getClienteId());
+        if (cliente == null) return;
 
         List<ReservaServicio> servicios = reservaServicioRepository.findByReservaIdOrderById(cita.getId());
         if (cliente.getEmail() != null && !cliente.getEmail().isBlank()) {
@@ -85,13 +124,12 @@ public class RecordatorioJobs {
         }
     }
 
-    private void procesarCumpleano(Reserva reserva) {
-        Tenant tenant = tenantRepository.findById(reserva.getTenantId()).orElse(null);
-        if (tenant == null || !tenant.isActivo()) return;
+    private void procesarCumpleano(Reserva reserva, Map<Long, Tenant> tenants, Map<Long, Cliente> clientes) {
+        Tenant tenant = tenants.get(reserva.getTenantId());
+        if (tenant == null) return;
 
-        Cliente cliente = clienteRepository
-                .findByIdAndTenantId(reserva.getClienteId(), reserva.getTenantId()).orElse(null);
-        if (cliente == null || cliente.isAnonimizado()) return;
+        Cliente cliente = clientes.get(reserva.getClienteId());
+        if (cliente == null) return;
 
         List<ReservaServicio> servicios = null;
         if (reserva.getServicioId() != null) {

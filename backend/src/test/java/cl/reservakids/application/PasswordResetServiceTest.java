@@ -1,6 +1,7 @@
 package cl.reservakids.application;
 
 import cl.reservakids.application.dto.AuthDtos.ResetConfirmacionRequest;
+import cl.reservakids.application.usecase.AuthCrypto;
 import cl.reservakids.application.usecase.AuthEventPort;
 import cl.reservakids.application.usecase.NotificacionPort;
 import cl.reservakids.application.usecase.PasswordResetService;
@@ -11,6 +12,7 @@ import cl.reservakids.domain.repository.PasswordResetTokenRepository;
 import cl.reservakids.domain.repository.RefreshTokenRepository;
 import cl.reservakids.domain.repository.TenantRepository;
 import cl.reservakids.domain.repository.UsuarioRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -42,8 +44,14 @@ class PasswordResetServiceTest {
     @Mock PasswordEncoder passwordEncoder;
     @Mock NotificacionPort notificacion;
     @Mock AuthEventPort authEvent;
+    @Mock AuthCrypto authCrypto;
 
     @InjectMocks PasswordResetService service;
+
+    @BeforeEach
+    void stubAuthCrypto() {
+        lenient().when(authCrypto.hashToken(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
 
     @Test
     void solicitarResetGeneraTokenInvalidaPreviosYNotifica() {
