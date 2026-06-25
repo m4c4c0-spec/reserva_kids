@@ -46,25 +46,6 @@ function irAlLink() {
   router.push(`/${slug}`)
 }
 
-const features = [
-  {
-    icon: 'storefront',
-    titulo: 'Todo el menú a la vista',
-    desc: 'Precios, duración y capacidad visibles. Sin preguntar por WhatsApp.',
-  },
-  {
-    icon: 'calendar_month',
-    titulo: 'Elige día y hora al instante',
-    desc: 'Horas libres en vivo. Reserva en segundos, sin vueltas.',
-  },
-  { icon: 'payments', titulo: 'Seña online segura', desc: 'Pago con Mercado Pago. Tu fecha queda confirmada.' },
-  {
-    icon: 'notifications_active',
-    titulo: 'Avisos automáticos',
-    desc: 'WhatsApp y email en cada paso. Siempre sabés en qué va tu reserva.',
-  },
-]
-
 const pasosDuenos = [
   { num: 1, titulo: 'Crea tu escaparate', desc: 'Publica paquetes con precios y horarios en 10 minutos.' },
   { num: 2, titulo: 'Recibe reservas', desc: 'Los papás eligen día y hora solos. Vos cotizás con un clic.' },
@@ -77,7 +58,16 @@ const pasosPapas = [
   { num: 3, titulo: 'Pagá la seña', desc: 'Pago seguro online. Te confirmamos por WhatsApp.' },
 ]
 
-const pasos = computed(() => (isSingleTenant.value ? pasosPapas : pasosDuenos))
+const flipped = ref(false)
+function toggleFlip() {
+  flipped.value = !flipped.value
+}
+
+const pasos = computed(() => (flipped.value ? pasosDuenos : pasosPapas))
+const tituloPasos = computed(() => (flipped.value ? 'De WhatsApps a fiestas confirmadas' : 'Reservá en tres pasos'))
+const subtituloPasos = computed(() =>
+  flipped.value ? 'Publicá tu salón y recibí reservas online' : 'Así de simple es reservar',
+)
 
 const confianza = [
   { icon: 'verified_user', texto: 'Pagos seguros con Mercado Pago' },
@@ -91,17 +81,12 @@ const textoReservar = computed(() =>
     ? 'Reservá el cumpleaños de tu hijo o hija en minutos. Mirá precios y horas, elegí y pagá la seña online.'
     : 'Explorá salones infantiles con precios y horarios visibles. Reservá en minutos, sin WhatsApp.',
 )
-
-const flipped = ref(false)
-function toggleFlip() {
-  flipped.value = !flipped.value
-}
 </script>
 
 <template>
   <main
     class="relative min-h-screen bg-surface bg-cover bg-scroll md:bg-fixed"
-    :style="{ backgroundImage: `url(${bgV2})` }"
+    :style="{ backgroundImage: `url(${bgV2})`, paddingBottom: 'env(safe-area-inset-bottom, 0px)' }"
   >
     <!-- Overlay de contraste: la foto de fondo puede bajar el contraste del texto (WCAG).
          Esta capa lo asegura sin tapar las secciones (van en z superior por orden DOM). -->
@@ -219,7 +204,7 @@ function toggleFlip() {
 
       <!-- Flip trigger -->
       <button
-        class="flex items-center justify-center gap-1.5 mx-auto mt-4 text-xs font-bold text-on-surface-variant/50 hover:text-primary transition-colors group"
+        class="flex items-center justify-center gap-1.5 mx-auto mt-4 text-xs font-bold text-on-surface-variant/50 hover:text-primary transition-colors group min-h-[44px] px-4"
         @click="toggleFlip"
       >
         <span class="material-symbols-outlined text-[16px] group-hover:animate-pulse">{{
@@ -253,7 +238,7 @@ function toggleFlip() {
           <span class="material-symbols-outlined text-[16px]">link</span>
           ¿Ya conocés un salón? Pegá su link o escribí el nombre
         </p>
-        <form class="flex items-center gap-2" @submit.prevent="irAlLink">
+        <form class="flex flex-col xs:flex-row items-stretch xs:items-center gap-2" @submit.prevent="irAlLink">
           <div class="relative flex-1">
             <span
               class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/40 text-[18px]"
@@ -270,35 +255,12 @@ function toggleFlip() {
           <button
             type="submit"
             :disabled="!linkInput.trim()"
-            class="shrink-0 px-5 py-3 rounded-xl bg-primary text-on-primary font-bold text-sm flex items-center gap-1.5 transition-all hover:shadow-lg disabled:opacity-30 disabled:cursor-not-allowed"
+            class="shrink-0 px-5 py-3 rounded-xl bg-primary text-on-primary font-bold text-sm flex items-center justify-center gap-1.5 transition-all hover:shadow-lg disabled:opacity-30 disabled:cursor-not-allowed min-h-[44px]"
           >
             Ir
             <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
         </form>
-      </div>
-    </section>
-
-    <!-- ═══ FEATURES (multi-tenant) ═══ -->
-    <section v-if="!isSingleTenant" class="max-w-5xl mx-auto px-5 pb-16 md:pb-20">
-      <div class="text-center mb-10">
-        <p class="font-display font-bold text-xs tracking-widest uppercase text-secondary mb-2">Para tu negocio</p>
-        <h2 class="font-display font-extrabold text-2xl md:text-3xl text-on-surface">
-          Todo lo que necesitás para llenar el calendario
-        </h2>
-      </div>
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div
-          v-for="f in features"
-          :key="f.icon"
-          class="bg-surface-lowest rounded-2xl border border-outline-variant/10 p-5 text-center hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
-        >
-          <div class="w-12 h-12 rounded-xl bg-primary-container/50 flex items-center justify-center mx-auto mb-3">
-            <span class="material-symbols-outlined text-xl text-primary">{{ f.icon }}</span>
-          </div>
-          <h3 class="font-display font-bold text-sm text-on-surface mb-1">{{ f.titulo }}</h3>
-          <p class="text-xs font-medium text-on-surface-variant leading-relaxed">{{ f.desc }}</p>
-        </div>
       </div>
     </section>
 
@@ -308,10 +270,13 @@ function toggleFlip() {
     >
       <div class="max-w-4xl mx-auto px-5">
         <div class="text-center mb-10">
-          <p class="font-display font-bold text-xs tracking-widest uppercase text-secondary mb-2">Así de simple</p>
+          <p class="font-display font-bold text-xs tracking-widest uppercase text-secondary mb-2">
+            {{ flipped ? 'Para dueños de salón' : 'Así de simple' }}
+          </p>
           <h2 class="font-display font-extrabold text-2xl md:text-3xl text-on-surface">
-            {{ isSingleTenant ? 'Reservá en tres pasos' : 'De WhatsApps a fiestas confirmadas' }}
+            {{ tituloPasos }}
           </h2>
+          <p class="font-medium text-sm text-on-surface-variant mt-1">{{ subtituloPasos }}</p>
         </div>
         <div class="grid gap-6 md:grid-cols-3 relative">
           <div
