@@ -57,6 +57,7 @@ defineProps({
   background: radial-gradient(circle at 30% 30%, #ffb3d9, #ff4db8);
   top: 0;
   left: 20px;
+  -webkit-animation: cotton-bounce 2s ease-in-out infinite;
   animation: cotton-bounce 2s ease-in-out infinite;
 }
 
@@ -66,6 +67,7 @@ defineProps({
   background: radial-gradient(circle at 40% 40%, #ffe0f0, #ff80ce);
   top: 5px;
   left: 0;
+  -webkit-animation: cotton-bounce 2s ease-in-out 0.25s infinite;
   animation: cotton-bounce 2s ease-in-out 0.25s infinite;
 }
 
@@ -75,6 +77,7 @@ defineProps({
   background: radial-gradient(circle at 50% 30%, #b3e0ff, #66b3ff);
   top: 0;
   left: 50px;
+  -webkit-animation: cotton-bounce 2s ease-in-out 0.5s infinite;
   animation: cotton-bounce 2s ease-in-out 0.5s infinite;
 }
 
@@ -84,6 +87,7 @@ defineProps({
   background: radial-gradient(circle at 60% 50%, #ffd4ec, #ff6bc4);
   top: 25px;
   left: 55px;
+  -webkit-animation: cotton-bounce 2s ease-in-out 0.75s infinite;
   animation: cotton-bounce 2s ease-in-out 0.75s infinite;
 }
 
@@ -93,6 +97,7 @@ defineProps({
   background: radial-gradient(circle at 35% 35%, #d4e8ff, #80bfff);
   top: 30px;
   left: -5px;
+  -webkit-animation: cotton-bounce 2s ease-in-out 1s infinite;
   animation: cotton-bounce 2s ease-in-out 1s infinite;
 }
 
@@ -102,6 +107,7 @@ defineProps({
   background: radial-gradient(circle at 45% 55%, #ffcce0, #ff99d0);
   top: 45px;
   left: 30px;
+  -webkit-animation: cotton-bounce 2s ease-in-out 1.25s infinite;
   animation: cotton-bounce 2s ease-in-out 1.25s infinite;
 }
 
@@ -111,6 +117,7 @@ defineProps({
   background: radial-gradient(circle at 30% 60%, #ffe6f2, #ffb3d9);
   top: 50px;
   left: 10px;
+  -webkit-animation: cotton-bounce 2s ease-in-out 1.5s infinite;
   animation: cotton-bounce 2s ease-in-out 1.5s infinite;
 }
 
@@ -120,6 +127,7 @@ defineProps({
   background: radial-gradient(circle at 40% 40%, #cce5ff, #99ccff);
   top: 55px;
   left: 50px;
+  -webkit-animation: cotton-bounce 2s ease-in-out 1.75s infinite;
   animation: cotton-bounce 2s ease-in-out 1.75s infinite;
 }
 
@@ -131,6 +139,18 @@ defineProps({
   margin-top: -2px;
   position: relative;
   z-index: -1;
+}
+
+@-webkit-keyframes cotton-bounce {
+  0%,
+  100% {
+    -webkit-transform: translateY(0) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    -webkit-transform: translateY(-6px) scale(1.08);
+    opacity: 1;
+  }
 }
 
 @keyframes cotton-bounce {
